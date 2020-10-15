@@ -1,15 +1,23 @@
 #include "stdafx.h"
 
-HWND hwnd = NULL;
-LPCTSTR WindowName = L"DirectX12";
-LPCTSTR WindowTitle = L"DirectX12";
-int Width = 900;
-int Height = 600;
-bool FullScreen = false;
 
-void mainloop();
-bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+void mainloop() {
+    MSG msg;
+    ZeroMemory(&msg, sizeof(MSG));
+
+    while (true) {
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) break;
+
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+        else {
+
+        }
+    }
+}
 
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
@@ -19,8 +27,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
         return 0;
     }
 
-    mainloop();
+    if (!InitD3D()) {
+        MessageBox(0, L"Failed to initialize direct3d 12", L"Error", MB_OK);
+        Cleanup();
+        return 1;
+    }
 
+    mainloop();
+    WaitForPreviousFrame();
+    CloseHandle(fenceEvent);
     return 0;
 }
 
@@ -65,22 +80,6 @@ bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fu
     UpdateWindow(hwnd);
 
     return true;
-}
-
-void mainloop() {
-    MSG msg;
-    ZeroMemory(&msg, sizeof(MSG));
-
-    while (true) {
-        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) break;
-
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        } else {
-
-        }
-    }
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {

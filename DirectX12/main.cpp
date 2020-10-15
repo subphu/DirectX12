@@ -10,7 +10,7 @@ void UpdatePipeline() {
     hr = commandAllocator[frameIndex]->Reset();
     if (FAILED(hr)) Running = false; 
 
-    hr = commandList->Reset(commandAllocator[frameIndex], NULL);
+    hr = commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
     if (FAILED(hr)) Running = false; 
 
     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
@@ -21,6 +21,14 @@ void UpdatePipeline() {
 
     const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+    // draw triangle
+    commandList->SetGraphicsRootSignature(rootSignature); 
+    commandList->RSSetViewports(1, &viewport);
+    commandList->RSSetScissorRects(1, &scissorRect); 
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+    commandList->DrawInstanced(3, 1, 0, 0);
 
     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 

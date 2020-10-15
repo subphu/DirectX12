@@ -62,6 +62,30 @@ bool InitD3D() {
     hr = device->CreateCommandQueue(&cqDesc, IID_PPV_ARGS(&commandQueue));
     if (FAILED(hr)) return false;
 
+
+    // Creating the Swap Chain
+    DXGI_MODE_DESC backBufferDesc = {};
+    backBufferDesc.Width = Width;
+    backBufferDesc.Height = Height; 
+    backBufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+
+    DXGI_SAMPLE_DESC sampleDesc = {};
+    sampleDesc.Count = 1; 
+                         
+    DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
+    swapChainDesc.BufferCount = frameBufferCount;
+    swapChainDesc.BufferDesc = backBufferDesc;
+    swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    swapChainDesc.OutputWindow = hwnd;
+    swapChainDesc.SampleDesc = sampleDesc; 
+    swapChainDesc.Windowed = !FullScreen;
+
+    IDXGISwapChain* tempSwapChain;
+    dxgiFactory->CreateSwapChain(commandQueue, &swapChainDesc, &tempSwapChain);
+
+    swapChain = static_cast<IDXGISwapChain3*>(tempSwapChain);
+    frameIndex = swapChain->GetCurrentBackBufferIndex();
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {

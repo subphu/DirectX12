@@ -1,6 +1,20 @@
 #include "stdafx.h"
 
 
+void WaitForPreviousFrame() {
+    HRESULT hr;
+
+    frameIndex = swapChain->GetCurrentBackBufferIndex();
+
+    if (fence[frameIndex]->GetCompletedValue() < fenceValue[frameIndex]) {
+        hr = fence[frameIndex]->SetEventOnCompletion(fenceValue[frameIndex], fenceEvent);
+        if (FAILED(hr)) Running = false; 
+
+        WaitForSingleObject(fenceEvent, INFINITE);
+    }
+
+    fenceValue[frameIndex]++;
+}
 
 void mainloop() {
     MSG msg;

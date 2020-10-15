@@ -94,6 +94,10 @@ void Cleanup() {
         SAFE_RELEASE(commandAllocator[i]);
         SAFE_RELEASE(fence[i]);
     };
+
+    SAFE_RELEASE(pipelineStateObject);
+    SAFE_RELEASE(rootSignature);
+    SAFE_RELEASE(vertexBuffer);
 }
 
 bool InitD3D() {

@@ -231,6 +231,28 @@ bool InitD3D() {
     D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
     vertexShaderBytecode.BytecodeLength = vertexShader->GetBufferSize();
     vertexShaderBytecode.pShaderBytecode = vertexShader->GetBufferPointer();
+
+    // compile pixel shader
+    ID3DBlob* pixelShader;
+    hr = D3DCompileFromFile(L"PixelShader.hlsl",
+        nullptr,
+        nullptr,
+        "main",
+        "ps_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+        0,
+        &pixelShader,
+        &errorBuff);
+
+    if (FAILED(hr)) {
+        OutputDebugStringA((char*)errorBuff->GetBufferPointer());
+        return false;
+    }
+
+    D3D12_SHADER_BYTECODE pixelShaderBytecode = {};
+    pixelShaderBytecode.BytecodeLength = pixelShader->GetBufferSize();
+    pixelShaderBytecode.pShaderBytecode = pixelShader->GetBufferPointer();
+
     return true;
 }
 

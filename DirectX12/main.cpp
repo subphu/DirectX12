@@ -342,6 +342,12 @@ bool InitD3D() {
     fenceValue[frameIndex]++;
     hr = commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
     if (FAILED(hr)) Running = false; 
+
+    // create a vertex buffer view
+    vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+    vertexBufferView.StrideInBytes = sizeof(Vertex);
+    vertexBufferView.SizeInBytes = vBufferSize;
+
     return true;
 }
 

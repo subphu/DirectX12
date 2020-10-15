@@ -86,6 +86,29 @@ bool InitD3D() {
 
     swapChain = static_cast<IDXGISwapChain3*>(tempSwapChain);
     frameIndex = swapChain->GetCurrentBackBufferIndex();
+
+    // Create the Back Buffers (render target views) Descriptor Heap
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+    rtvHeapDesc.NumDescriptors = frameBufferCount;
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+    hr = device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvDescriptorHeap));
+    if (FAILED(hr)) return false;
+
+    rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+    for (int i = 0; i < frameBufferCount; i++) {
+        hr = swapChain->GetBuffer(i, IID_PPV_ARGS(&renderTargets[i]));
+        if (FAILED(hr))  return false; 
+
+        device->CreateRenderTargetView(renderTargets[i], nullptr, rtvHandle);
+
+        rtvHandle.Offset(1, rtvDescriptorSize);
+    }
+
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {

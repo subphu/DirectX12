@@ -109,6 +109,17 @@ bool InitD3D() {
         rtvHandle.Offset(1, rtvDescriptorSize);
     }
 
+    // Create the Command Allocators
+    for (int i = 0; i < frameBufferCount; i++) {
+        hr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator[i]));
+        if (FAILED(hr)) return false; 
+    }
+
+    // Create a Command List 
+    hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator[0], NULL, IID_PPV_ARGS(&commandList));
+    if (FAILED(hr)) return false;  
+    commandList->Close();
+
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {

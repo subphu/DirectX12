@@ -76,6 +76,25 @@ void mainloop() {
     }
 }
 
+void Cleanup() { 
+    for (int i = 0; i < frameBufferCount; ++i) {
+        frameIndex = i;
+        WaitForPreviousFrame();
+    } 
+
+    SAFE_RELEASE(device);
+    SAFE_RELEASE(swapChain);
+    SAFE_RELEASE(commandQueue);
+    SAFE_RELEASE(rtvDescriptorHeap);
+    SAFE_RELEASE(commandList);
+
+    for (int i = 0; i < frameBufferCount; ++i) {
+        SAFE_RELEASE(renderTargets[i]);
+        SAFE_RELEASE(commandAllocator[i]);
+        SAFE_RELEASE(fence[i]);
+    };
+}
+
 bool InitD3D() {
     HRESULT hr;
 
@@ -206,6 +225,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
     mainloop();
     WaitForPreviousFrame();
     CloseHandle(fenceEvent);
+    Cleanup();
     return 0;
 }
 

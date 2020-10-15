@@ -1,5 +1,33 @@
 #include "stdafx.h"
 
+void Update() { }
+
+void UpdatePipeline() {
+    HRESULT hr;
+
+    WaitForPreviousFrame();
+
+    hr = commandAllocator[frameIndex]->Reset();
+    if (FAILED(hr)) Running = false; 
+
+    hr = commandList->Reset(commandAllocator[frameIndex], NULL);
+    if (FAILED(hr)) Running = false; 
+
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
+
+    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+
+    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+    commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+
+    hr = commandList->Close();
+    if (FAILED(hr)) Running = false;
+}
+
 
 void WaitForPreviousFrame() {
     HRESULT hr;

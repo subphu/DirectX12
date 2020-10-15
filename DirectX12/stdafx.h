@@ -24,6 +24,7 @@ LPCTSTR WindowTitle = L"DirectX12";
 int Width = 900;
 int Height = 600;
 bool FullScreen = false;
+bool Running = true;
 
 void mainloop();
 bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);

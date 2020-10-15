@@ -53,6 +53,15 @@ bool InitD3D() {
 
     hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
     if (FAILED(hr)) return false;
+
+    // Creating the RTV Command Queue
+    D3D12_COMMAND_QUEUE_DESC cqDesc = {};
+    cqDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    cqDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+    hr = device->CreateCommandQueue(&cqDesc, IID_PPV_ARGS(&commandQueue));
+    if (FAILED(hr)) return false;
+
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {

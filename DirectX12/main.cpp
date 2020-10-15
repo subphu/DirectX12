@@ -207,6 +207,30 @@ bool InitD3D() {
     fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (fenceEvent == nullptr) return false; 
 
+
+    // create vertex and pixel shaders
+    // compile vertex shader
+    ID3DBlob* vertexShader; 
+    ID3DBlob* errorBuff;
+
+    hr = D3DCompileFromFile(L"VertexShader.hlsl",
+        nullptr,
+        nullptr,
+        "main",
+        "vs_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+        0,
+        &vertexShader,
+        &errorBuff);
+
+    if (FAILED(hr)) {
+        OutputDebugStringA((char*)errorBuff->GetBufferPointer());
+        return false;
+    }
+
+    D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
+    vertexShaderBytecode.BytecodeLength = vertexShader->GetBufferSize();
+    vertexShaderBytecode.pShaderBytecode = vertexShader->GetBufferPointer();
     return true;
 }
 

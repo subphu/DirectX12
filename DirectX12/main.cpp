@@ -348,6 +348,19 @@ bool InitD3D() {
     vertexBufferView.StrideInBytes = sizeof(Vertex);
     vertexBufferView.SizeInBytes = vBufferSize;
 
+    // Fill out the Viewport and scissor rect
+    viewport.TopLeftX = 0;
+    viewport.TopLeftY = 0;
+    viewport.Width = Width;
+    viewport.Height = Height;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+
+    scissorRect.left = 0;
+    scissorRect.top = 0;
+    scissorRect.right = Width;
+    scissorRect.bottom = Height;
+
     return true;
 }
 

@@ -120,6 +120,17 @@ bool InitD3D() {
     if (FAILED(hr)) return false;  
     commandList->Close();
 
+    // Create a Fence & Fence Event 
+    for (int i = 0; i < frameBufferCount; i++) {
+        hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence[i]));
+        if (FAILED(hr)) return false; 
+        fenceValue[i] = 0; 
+    }
+     
+    fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (fenceEvent == nullptr) return false; 
+
+    return true;
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {

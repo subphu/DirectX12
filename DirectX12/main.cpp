@@ -28,6 +28,21 @@ void UpdatePipeline() {
     if (FAILED(hr)) Running = false;
 }
 
+void Render() {
+    HRESULT hr;
+
+    UpdatePipeline();
+     
+    ID3D12CommandList* ppCommandLists[] = { commandList };
+     
+    commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    hr = commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
+    if (FAILED(hr)) Running = false; 
+
+    hr = swapChain->Present(0, 0);
+    if (FAILED(hr)) Running = false; 
+}
 
 void WaitForPreviousFrame() {
     HRESULT hr;

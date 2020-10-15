@@ -18,6 +18,12 @@
 
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 
+using namespace DirectX;
+
+struct Vertex {
+    XMFLOAT3 pos;
+};
+
 HWND hwnd = NULL;
 LPCTSTR WindowName = L"DirectX12";
 LPCTSTR WindowTitle = L"DirectX12";
@@ -36,6 +42,8 @@ const int threadCount = 1;
 const int commandAllocatorCount = frameBufferCount * threadCount;
 const int fenceCount = commandAllocatorCount;
 
+int frameIndex;
+int rtvDescriptorSize;
 ID3D12Device* device;
 IDXGISwapChain3* swapChain;
 ID3D12DescriptorHeap* rtvDescriptorHeap;
@@ -46,8 +54,14 @@ ID3D12GraphicsCommandList* commandList;
 ID3D12Fence* fence[fenceCount];
 HANDLE fenceEvent;
 UINT64 fenceValue[fenceCount];
-int frameIndex;
-int rtvDescriptorSize;
+
+ID3D12PipelineState* pipelineStateObject;
+ID3D12RootSignature* rootSignature;
+D3D12_VIEWPORT viewport;
+D3D12_RECT scissorRect;
+ID3D12Resource* vertexBuffer; 
+D3D12_VERTEX_BUFFER_VIEW vertexBufferView; 
+
 
 bool InitD3D();
 void Update();
@@ -55,3 +69,4 @@ void UpdatePipeline();
 void Render();
 void Cleanup();
 void WaitForPreviousFrame();
+

@@ -71,7 +71,8 @@ void mainloop() {
             DispatchMessage(&msg);
         }
         else {
-
+            Update();
+            Render();
         }
     }
 }

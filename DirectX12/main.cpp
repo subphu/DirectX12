@@ -311,6 +311,18 @@ bool InitD3D() {
         nullptr,
         IID_PPV_ARGS(&vBufferUploadHeap));
     vBufferUploadHeap->SetName(L"Vertex Buffer Upload Resource Heap");
+
+    // create default heap
+    // default heap is memory on the GPU. Only the GPU has access to this memory
+    // To get data into this heap, we will have to upload the data using an upload heap
+    device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), 
+        D3D12_HEAP_FLAG_NONE, 
+        &CD3DX12_RESOURCE_DESC::Buffer(vBufferSize),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr, 
+        IID_PPV_ARGS(&vertexBuffer));
+    vertexBuffer->SetName(L"Vertex Buffer Default Resource Heap");
     return true;
 }
 

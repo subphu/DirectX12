@@ -22,6 +22,7 @@ using namespace DirectX;
 
 struct Vertex {
     XMFLOAT3 pos;
+    XMFLOAT4 color;
 };
 
 HWND hwnd = NULL;

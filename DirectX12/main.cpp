@@ -19,7 +19,7 @@ void UpdatePipeline() {
 
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
-    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+    const float clearColor[] = { 0.1f, 0.1f, 0.1f, 1.0f };
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
     // draw triangle
@@ -266,7 +266,8 @@ bool InitD3D() {
 
     // create input layout
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
     };
 
     D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
@@ -301,12 +302,11 @@ bool InitD3D() {
     hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineStateObject));
     if (FAILED(hr)) return false; 
 
-    // Create vertex buffer
-
+    // Vertex buffer
     Vertex vList[] = {
-        { { 0.0f, 0.5f, 0.5f } },
-        { { 0.5f, -0.5f, 0.5f } },
-        { { -0.5f, -0.5f, 0.5f } },
+        { { 0.0f, 0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+        { { 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
+        { { -0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
     };
 
     int vBufferSize = sizeof(vList);

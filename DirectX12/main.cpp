@@ -15,7 +15,9 @@ void UpdatePipeline() {
 
     commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = {};
+    size_t startPtr = rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
+    rtvHandle.ptr = startPtr + frameIndex * rtvDescriptorSize;
 
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
@@ -187,7 +189,7 @@ bool InitD3D() {
 
     rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 
     for (int i = 0; i < frameBufferCount; i++) {
         hr = swapChain->GetBuffer(i, IID_PPV_ARGS(&renderTargets[i]));
@@ -195,7 +197,7 @@ bool InitD3D() {
 
         device->CreateRenderTargetView(renderTargets[i], nullptr, rtvHandle);
 
-        rtvHandle.Offset(1, rtvDescriptorSize);
+        rtvHandle.ptr += rtvDescriptorSize;
     }
 
     // Create the Command Allocators

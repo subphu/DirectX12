@@ -13,7 +13,15 @@ void UpdatePipeline() {
     hr = commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
     if (FAILED(hr)) Running = false; 
 
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+    D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
+    resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrierToTarget.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrierToTarget.Transition.pResource = renderTargets[frameIndex];
+    resourceBarrierToTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    resourceBarrierToTarget.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    resourceBarrierToTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &resourceBarrierToTarget);
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = {};
     size_t startPtr = rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
@@ -32,7 +40,14 @@ void UpdatePipeline() {
     commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
     commandList->DrawInstanced(3, 1, 0, 0);
 
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+    D3D12_RESOURCE_BARRIER resourceBarrierToPresent = {};
+    resourceBarrierToPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrierToPresent.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrierToPresent.Transition.pResource = renderTargets[frameIndex];
+    resourceBarrierToPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    resourceBarrierToPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    resourceBarrierToPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &resourceBarrierToPresent);
 
     hr = commandList->Close();
     if (FAILED(hr)) Running = false;
@@ -346,7 +361,15 @@ bool InitD3D() {
 
     UpdateSubresources(commandList, vertexBuffer, vBufferUploadHeap, 0, 0, 1, &vertexData);
 
-    commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+    D3D12_RESOURCE_BARRIER resourceBarrier = {};
+    resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrier.Transition.pResource = vertexBuffer;
+    resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+    resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+    commandList->ResourceBarrier(1, &resourceBarrier);
 
     // execute the command list
     commandList->Close();

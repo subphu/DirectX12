@@ -379,9 +379,17 @@ bool InitD3D() {
     resourceDesc.SampleDesc.Quality = 0;
     resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    D3D12_HEAP_PROPERTIES heapPropertiesUpload = {};
+    heapPropertiesUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
+    heapPropertiesUpload.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapPropertiesUpload.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapPropertiesUpload.CreationNodeMask = 1;
+    heapPropertiesUpload.VisibleNodeMask = 1;
+
     ID3D12Resource* vBufferUploadHeap;
     device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        &heapPropertiesUpload,
         D3D12_HEAP_FLAG_NONE,
         &resourceDesc,
         D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -392,8 +400,15 @@ bool InitD3D() {
     // create default heap
     // default heap is memory on the GPU. Only the GPU has access to this memory
     // To get data into this heap, we will have to upload the data using an upload heap
+    D3D12_HEAP_PROPERTIES heapPropertiesDefault = {};
+    heapPropertiesDefault.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapPropertiesDefault.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapPropertiesDefault.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapPropertiesDefault.CreationNodeMask = 1;
+    heapPropertiesDefault.VisibleNodeMask = 1;
+
     device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), 
+        &heapPropertiesDefault,
         D3D12_HEAP_FLAG_NONE, 
         &resourceDesc,
         D3D12_RESOURCE_STATE_COPY_DEST,

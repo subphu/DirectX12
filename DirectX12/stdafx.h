@@ -59,7 +59,9 @@ ID3D12RootSignature* rootSignature;
 D3D12_VIEWPORT viewport;
 D3D12_RECT scissorRect;
 ID3D12Resource* vertexBuffer; 
-D3D12_VERTEX_BUFFER_VIEW vertexBufferView; 
+D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+ID3D12Resource* indexBuffer;
+D3D12_INDEX_BUFFER_VIEW indexBufferView;
 
 
 bool InitD3D();
@@ -68,4 +70,6 @@ void UpdatePipeline();
 void Render();
 void Cleanup();
 void WaitForPreviousFrame();
+
+void CreateBuffer(int bufferSize, ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, BYTE* data);
 

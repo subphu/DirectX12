@@ -10,6 +10,7 @@ void UpdatePipeline() {
     hr = commandAllocator[frameIndex]->Reset();
     if (FAILED(hr)) Running = false; 
 
+    //hr = commandList->Reset(commandAllocator[frameIndex], NULL);
     hr = commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
     if (FAILED(hr)) Running = false; 
 
@@ -38,7 +39,8 @@ void UpdatePipeline() {
     commandList->RSSetScissorRects(1, &scissorRect); 
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
-    commandList->DrawInstanced(3, 1, 0, 0);
+    commandList->IASetIndexBuffer(&indexBufferView);
+    commandList->DrawIndexedInstanced(6, 1, 0, 0, 0); 
 
     D3D12_RESOURCE_BARRIER resourceBarrierToPresent = {};
     resourceBarrierToPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -123,6 +125,7 @@ void Cleanup() {
     SAFE_RELEASE(pipelineStateObject);
     SAFE_RELEASE(rootSignature);
     SAFE_RELEASE(vertexBuffer);
+    SAFE_RELEASE(indexBuffer);
 }
 
 bool InitD3D() {
@@ -357,82 +360,22 @@ bool InitD3D() {
 
     // Vertex buffer
     Vertex vList[] = {
-        { { 0.0f, 0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
-        { { 0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
+        { { -0.5f,  0.5f, 0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+        { {  0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
         { { -0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
+        { {  0.5f,  0.5f, 0.5f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
     };
-
     int vBufferSize = sizeof(vList);
-
-    // create upload universal buffer
-    D3D12_RESOURCE_DESC resourceDesc = {};
-    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    resourceDesc.Alignment = 0;
-    resourceDesc.Width = vBufferSize;
-    resourceDesc.Height = 1;
-    resourceDesc.DepthOrArraySize = 1;
-    resourceDesc.MipLevels = 1;
-    resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
-    resourceDesc.SampleDesc.Count = 1;
-    resourceDesc.SampleDesc.Quality = 0;
-    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-    resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-    D3D12_HEAP_PROPERTIES heapPropertiesUpload = {};
-    heapPropertiesUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
-    heapPropertiesUpload.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-    heapPropertiesUpload.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-    heapPropertiesUpload.CreationNodeMask = 1;
-    heapPropertiesUpload.VisibleNodeMask = 1;
-
     ID3D12Resource* vBufferUploadHeap;
-    device->CreateCommittedResource(
-        &heapPropertiesUpload,
-        D3D12_HEAP_FLAG_NONE,
-        &resourceDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&vBufferUploadHeap));
-    vBufferUploadHeap->SetName(L"Vertex Buffer Upload Resource Heap");
-
-    // create default GPU buffer
-    D3D12_HEAP_PROPERTIES heapPropertiesDefault = {};
-    heapPropertiesDefault.Type = D3D12_HEAP_TYPE_DEFAULT;
-    heapPropertiesDefault.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-    heapPropertiesDefault.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-    heapPropertiesDefault.CreationNodeMask = 1;
-    heapPropertiesDefault.VisibleNodeMask = 1;
-
-    device->CreateCommittedResource(
-        &heapPropertiesDefault,
-        D3D12_HEAP_FLAG_NONE, 
-        &resourceDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr, 
-        IID_PPV_ARGS(&vertexBuffer));
-    vertexBuffer->SetName(L"Vertex Buffer Default Resource Heap");
-
-    // copy the data from the upload heap to the default heap
-    BYTE* pData;
-    hr = vBufferUploadHeap->Map(0, NULL, reinterpret_cast<void**>(&pData));
-    if (FAILED(hr)) return false;
-
-    memcpy(pData, reinterpret_cast<BYTE*>(vList), vBufferSize);
-  
-    vBufferUploadHeap->Unmap(0, NULL);
-
-    commandList->CopyBufferRegion(vertexBuffer, 0, vBufferUploadHeap, 0, vBufferSize);
+    CreateBuffer(vBufferSize, &vBufferUploadHeap, &vertexBuffer, reinterpret_cast<BYTE*>(vList));
 
 
-    D3D12_RESOURCE_BARRIER resourceBarrier = {};
-    resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    resourceBarrier.Transition.pResource = vertexBuffer;
-    resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-    resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    DWORD iList[] = { 0, 1, 2, 0, 3, 1 };
+    int iBufferSize = sizeof(iList);
+    ID3D12Resource* iBufferUploadHeap;
+    CreateBuffer(iBufferSize, &iBufferUploadHeap, &indexBuffer, reinterpret_cast<BYTE*>(iList));
 
-    commandList->ResourceBarrier(1, &resourceBarrier);
+
 
     // execute the command list
     commandList->Close();
@@ -443,7 +386,11 @@ bool InitD3D() {
     hr = commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
     if (FAILED(hr)) Running = false; 
 
-    // create a vertex buffer view
+    // create a vertex and index buffer view
+    indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
+    indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+    indexBufferView.SizeInBytes = iBufferSize;
+
     vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
     vertexBufferView.StrideInBytes = sizeof(Vertex);
     vertexBufferView.SizeInBytes = vBufferSize;
@@ -464,7 +411,82 @@ bool InitD3D() {
     return true;
 }
 
+void CreateBuffer(int bufferSize, ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, BYTE* data) {
+
+    // create upload universal buffer
+    D3D12_RESOURCE_DESC resourceDesc = {};
+    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    resourceDesc.Alignment = 0;
+    resourceDesc.Width = bufferSize;
+    resourceDesc.Height = 1;
+    resourceDesc.DepthOrArraySize = 1;
+    resourceDesc.MipLevels = 1;
+    resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+    resourceDesc.SampleDesc.Count = 1;
+    resourceDesc.SampleDesc.Quality = 0;
+    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    D3D12_HEAP_PROPERTIES heapPropertiesUpload = {};
+    heapPropertiesUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
+    heapPropertiesUpload.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapPropertiesUpload.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapPropertiesUpload.CreationNodeMask = 1;
+    heapPropertiesUpload.VisibleNodeMask = 1;
+
+    device->CreateCommittedResource(
+        &heapPropertiesUpload,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(srcBuffer));
+    (*srcBuffer)->SetName(L"Buffer Upload Resource Heap");
+
+    // create default GPU buffer
+    D3D12_HEAP_PROPERTIES heapPropertiesDefault = {};
+    heapPropertiesDefault.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapPropertiesDefault.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapPropertiesDefault.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapPropertiesDefault.CreationNodeMask = 1;
+    heapPropertiesDefault.VisibleNodeMask = 1;
+
+    device->CreateCommittedResource(
+        &heapPropertiesDefault,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(dstBuffer));
+    (*dstBuffer)->SetName(L"Buffer Default Resource Heap");
+
+    // copy the data from the upload heap to the default heap
+    BYTE* pData;
+    (*srcBuffer)->Map(0, NULL, reinterpret_cast<void**>(&pData));
+    
+    memcpy(pData, data, bufferSize);
+
+    (*srcBuffer)->Unmap(0, NULL);
+
+    commandList->CopyBufferRegion(*dstBuffer, 0, *srcBuffer, 0, bufferSize);
+
+    D3D12_RESOURCE_BARRIER resourceBarrier = {};
+    resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrier.Transition.pResource = *dstBuffer;
+    resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    resourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+    resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+    commandList->ResourceBarrier(1, &resourceBarrier);
+
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
+
+    std::wstringstream ss;
+    ss << "Hello world";
+    OutputDebugString(ss.str().c_str());
 
     if (!InitWindow(hInstance, nShowCmd, Width, Height, FullScreen)) {
         MessageBox(0, L"Window Initialization - Failed", L"Error", MB_OK);

@@ -14,8 +14,6 @@
 #include <iostream>
 #include <sstream>   
 
-#include "d3dx12.h"
-
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 
 using namespace DirectX;

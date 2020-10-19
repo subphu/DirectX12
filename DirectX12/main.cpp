@@ -307,6 +307,24 @@ bool InitD3D() {
     if (FAILED(hr)) return false;
 
     // create a pipeline state object (PSO)
+
+    D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
+    renderTargetBlendDesc.BlendEnable = FALSE;
+    renderTargetBlendDesc.LogicOpEnable = FALSE;
+    renderTargetBlendDesc.SrcBlend = D3D12_BLEND_ONE;
+    renderTargetBlendDesc.DestBlend = D3D12_BLEND_ZERO;
+    renderTargetBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
+    renderTargetBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+    renderTargetBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+    renderTargetBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    renderTargetBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
+    renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+    D3D12_BLEND_DESC blendDesc = {};
+    blendDesc.AlphaToCoverageEnable = FALSE;
+    blendDesc.IndependentBlendEnable = FALSE;
+    for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        blendDesc.RenderTarget[i] = renderTargetBlendDesc;
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.InputLayout = inputLayoutDesc;
     psoDesc.pRootSignature = rootSignature; 
@@ -317,7 +335,7 @@ bool InitD3D() {
     psoDesc.SampleDesc = sampleDesc;
     psoDesc.SampleMask = 0xffffffff; 
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT); 
+    psoDesc.BlendState = blendDesc;
     psoDesc.NumRenderTargets = 1;
 
     hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineStateObject));

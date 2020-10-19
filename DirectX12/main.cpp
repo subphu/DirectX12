@@ -364,9 +364,7 @@ bool InitD3D() {
 
     int vBufferSize = sizeof(vList);
 
-    // create upload heap
-    // upload heaps are used to upload data to the GPU. CPU can write to it, GPU can read from it
-    // We will upload the vertex buffer using this heap to the default heap
+    // create upload universal buffer
     D3D12_RESOURCE_DESC resourceDesc = {};
     resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     resourceDesc.Alignment = 0;
@@ -397,9 +395,7 @@ bool InitD3D() {
         IID_PPV_ARGS(&vBufferUploadHeap));
     vBufferUploadHeap->SetName(L"Vertex Buffer Upload Resource Heap");
 
-    // create default heap
-    // default heap is memory on the GPU. Only the GPU has access to this memory
-    // To get data into this heap, we will have to upload the data using an upload heap
+    // create default GPU buffer
     D3D12_HEAP_PROPERTIES heapPropertiesDefault = {};
     heapPropertiesDefault.Type = D3D12_HEAP_TYPE_DEFAULT;
     heapPropertiesDefault.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -417,12 +413,16 @@ bool InitD3D() {
     vertexBuffer->SetName(L"Vertex Buffer Default Resource Heap");
 
     // copy the data from the upload heap to the default heap
-    D3D12_SUBRESOURCE_DATA vertexData = {};
-    vertexData.pData = reinterpret_cast<BYTE*>(vList);
-    vertexData.RowPitch = vBufferSize; 
-    vertexData.SlicePitch = vBufferSize; 
+    BYTE* pData;
+    hr = vBufferUploadHeap->Map(0, NULL, reinterpret_cast<void**>(&pData));
+    if (FAILED(hr)) return false;
 
-    UpdateSubresources(commandList, vertexBuffer, vBufferUploadHeap, 0, 0, 1, &vertexData);
+    memcpy(pData, reinterpret_cast<BYTE*>(vList), vBufferSize);
+  
+    vBufferUploadHeap->Unmap(0, NULL);
+
+    commandList->CopyBufferRegion(vertexBuffer, 0, vBufferUploadHeap, 0, vBufferSize);
+
 
     D3D12_RESOURCE_BARRIER resourceBarrier = {};
     resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;

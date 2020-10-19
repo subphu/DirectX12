@@ -23,6 +23,12 @@ struct Vertex {
     XMFLOAT4 color;
 };
 
+struct ConstantBuffer {
+    XMMATRIX model;
+    XMMATRIX view;
+    XMMATRIX projection;
+};
+
 HWND hwnd = NULL;
 LPCTSTR WindowName = L"DirectX12";
 LPCTSTR WindowTitle = L"DirectX12";
@@ -65,13 +71,34 @@ D3D12_INDEX_BUFFER_VIEW indexBufferView;
 ID3D12Resource* depthStencilBuffer; 
 ID3D12DescriptorHeap* dsDescriptorHeap;
 
+ID3D12DescriptorHeap* mainDescriptorHeap[frameBufferCount]; // this heap will store the descripor to our constant buffer
+ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memory on the gpu where our constant buffer will be placed.
+
+ConstantBuffer constantBuffer;
+UINT8* constantBufferGPUAddress[frameBufferCount];
+
 bool InitD3D();
 void Update();
 void UpdatePipeline();
 void Render();
 void Cleanup();
 void WaitForPreviousFrame();
+void InitCamera();
 
 void CreateBuffer(int bufferSize, ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, BYTE* data);
 HRESULT CreateGraphicsPipelineStateObj(DXGI_SAMPLE_DESC sampleDesc, D3D12_SHADER_BYTECODE vertexShaderBytecode, D3D12_SHADER_BYTECODE pixelShaderBytecode);
 
+
+float angle = 0.f;
+float yaw = 0.f;
+float pitch = 0.f;
+float roll = 0.f;
+
+XMMATRIX camView;
+XMMATRIX camProjection;
+
+XMVECTOR camPosition;
+XMVECTOR camTarget;
+XMVECTOR camUp;
+XMVECTOR camFront;
+XMVECTOR camRight;

@@ -28,10 +28,14 @@ void UpdatePipeline() {
     size_t startPtr = rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
     rtvHandle.ptr = startPtr + frameIndex * rtvDescriptorSize;
 
-    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+    D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+
+    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
     const float clearColor[] = { 0.1f, 0.1f, 0.1f, 1.0f };
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+    commandList->ClearDepthStencilView(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     // draw triangle
     commandList->SetGraphicsRootSignature(rootSignature); 
@@ -41,6 +45,7 @@ void UpdatePipeline() {
     commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
     commandList->IASetIndexBuffer(&indexBufferView);
     commandList->DrawIndexedInstanced(6, 1, 0, 0, 0); 
+    commandList->DrawIndexedInstanced(6, 1, 0, 4, 0); 
 
     D3D12_RESOURCE_BARRIER resourceBarrierToPresent = {};
     resourceBarrierToPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -126,6 +131,9 @@ void Cleanup() {
     SAFE_RELEASE(rootSignature);
     SAFE_RELEASE(vertexBuffer);
     SAFE_RELEASE(indexBuffer);
+
+    SAFE_RELEASE(depthStencilBuffer);
+    SAFE_RELEASE(dsDescriptorHeap);
 }
 
 bool InitD3D() {
@@ -284,15 +292,6 @@ bool InitD3D() {
     pixelShaderBytecode.BytecodeLength = pixelShader->GetBufferSize();
     pixelShaderBytecode.pShaderBytecode = pixelShader->GetBufferPointer();
 
-    // create input layout
-    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-    };
-
-    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
-    inputLayoutDesc.NumElements = sizeof(inputLayout) / sizeof(D3D12_INPUT_ELEMENT_DESC);
-    inputLayoutDesc.pInputElementDescs = inputLayout;
 
     // create root signature
     D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc;
@@ -310,53 +309,7 @@ bool InitD3D() {
     if (FAILED(hr)) return false;
 
     // create a pipeline state object (PSO)
-
-    D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
-    renderTargetBlendDesc.BlendEnable = FALSE;
-    renderTargetBlendDesc.LogicOpEnable = FALSE;
-    renderTargetBlendDesc.SrcBlend = D3D12_BLEND_ONE;
-    renderTargetBlendDesc.DestBlend = D3D12_BLEND_ZERO;
-    renderTargetBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
-    renderTargetBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
-    renderTargetBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
-    renderTargetBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
-    renderTargetBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
-    renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-
-    D3D12_BLEND_DESC blendDesc = {};
-    blendDesc.AlphaToCoverageEnable = FALSE;
-    blendDesc.IndependentBlendEnable = FALSE;
-    for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
-        blendDesc.RenderTarget[i] = renderTargetBlendDesc;
-
-    D3D12_RASTERIZER_DESC rasterizerDesc = {};
-    rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
-    rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
-    rasterizerDesc.FrontCounterClockwise = FALSE;
-    rasterizerDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
-    rasterizerDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
-    rasterizerDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
-    rasterizerDesc.DepthClipEnable = TRUE;
-    rasterizerDesc.MultisampleEnable = FALSE;
-    rasterizerDesc.AntialiasedLineEnable = FALSE;
-    rasterizerDesc.ForcedSampleCount = 0;
-    rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.InputLayout = inputLayoutDesc;
-    psoDesc.pRootSignature = rootSignature; 
-    psoDesc.VS = vertexShaderBytecode;
-    psoDesc.PS = pixelShaderBytecode;
-    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; 
-    psoDesc.SampleDesc = sampleDesc;
-    psoDesc.SampleMask = 0xffffffff; 
-    psoDesc.RasterizerState = rasterizerDesc;
-    psoDesc.BlendState = blendDesc;
-    psoDesc.NumRenderTargets = 1;
-
-    hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineStateObject));
-    if (FAILED(hr)) return false; 
+    if (FAILED(CreateGraphicsPipelineStateObj(sampleDesc, vertexShaderBytecode, pixelShaderBytecode))) return false;
 
     // Vertex buffer
     Vertex vList[] = {
@@ -364,6 +317,11 @@ bool InitD3D() {
         { {  0.5f, -0.5f, 0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
         { { -0.5f, -0.5f, 0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
         { {  0.5f,  0.5f, 0.5f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
+
+        { { -0.8f,  0.8f, 0.8f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+        { {  0.0f,  0.0f, 0.8f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
+        { { -0.8f,  0.0f, 0.8f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
+        { {  0.0f,  0.8f, 0.8f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
     };
     int vBufferSize = sizeof(vList);
     ID3D12Resource* vBufferUploadHeap;
@@ -375,6 +333,59 @@ bool InitD3D() {
     ID3D12Resource* iBufferUploadHeap;
     CreateBuffer(iBufferSize, &iBufferUploadHeap, &indexBuffer, reinterpret_cast<BYTE*>(iList));
 
+
+    // Create the depth/stencil buffer
+
+    D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+    dsvHeapDesc.NumDescriptors = 1;
+    dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    hr = device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsDescriptorHeap));
+    if (FAILED(hr)) Running = false; 
+
+    D3D12_DEPTH_STENCIL_VIEW_DESC depthStencilDesc = {};
+    depthStencilDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    depthStencilDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    depthStencilDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+    D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
+    depthOptimizedClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+    depthOptimizedClearValue.DepthStencil.Depth = 1.0f;
+    depthOptimizedClearValue.DepthStencil.Stencil = 0;
+
+    D3D12_RESOURCE_DESC resourceDesc = {};
+    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    resourceDesc.Alignment = 0;
+    resourceDesc.Width = Width;
+    resourceDesc.Height = Height;
+    resourceDesc.DepthOrArraySize = 1;
+    resourceDesc.MipLevels = 0;
+    resourceDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    resourceDesc.SampleDesc.Count = 1;
+    resourceDesc.SampleDesc.Quality = 0;
+    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+    D3D12_HEAP_PROPERTIES heapProperties = {};
+    heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapProperties.CreationNodeMask = 1;
+    heapProperties.VisibleNodeMask = 1;
+
+    device->CreateCommittedResource(
+        &heapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &depthOptimizedClearValue,
+        IID_PPV_ARGS(&depthStencilBuffer)
+    );
+    hr = device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsDescriptorHeap));
+    if (FAILED(hr))  Running = false; 
+    dsDescriptorHeap->SetName(L"Depth/Stencil Resource Heap");
+
+    device->CreateDepthStencilView(depthStencilBuffer, &depthStencilDesc, dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
 
     // execute the command list
@@ -480,6 +491,83 @@ void CreateBuffer(int bufferSize, ID3D12Resource** srcBuffer, ID3D12Resource** d
 
     commandList->ResourceBarrier(1, &resourceBarrier);
 
+}
+
+HRESULT CreateGraphicsPipelineStateObj(DXGI_SAMPLE_DESC sampleDesc, D3D12_SHADER_BYTECODE vertexShaderBytecode, D3D12_SHADER_BYTECODE pixelShaderBytecode) {
+    // create input layout
+    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+    };
+
+    D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
+    inputLayoutDesc.NumElements = sizeof(inputLayout) / sizeof(D3D12_INPUT_ELEMENT_DESC);
+    inputLayoutDesc.pInputElementDescs = inputLayout;
+
+    D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
+    renderTargetBlendDesc.BlendEnable = FALSE;
+    renderTargetBlendDesc.LogicOpEnable = FALSE;
+    renderTargetBlendDesc.SrcBlend = D3D12_BLEND_ONE;
+    renderTargetBlendDesc.DestBlend = D3D12_BLEND_ZERO;
+    renderTargetBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
+    renderTargetBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+    renderTargetBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+    renderTargetBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    renderTargetBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
+    renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+    D3D12_BLEND_DESC blendDesc = {};
+    blendDesc.AlphaToCoverageEnable = FALSE;
+    blendDesc.IndependentBlendEnable = FALSE;
+    for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+        blendDesc.RenderTarget[i] = renderTargetBlendDesc;
+
+    D3D12_RASTERIZER_DESC rasterizerDesc = {};
+    rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+    rasterizerDesc.CullMode = D3D12_CULL_MODE_BACK;
+    rasterizerDesc.FrontCounterClockwise = FALSE;
+    rasterizerDesc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+    rasterizerDesc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+    rasterizerDesc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+    rasterizerDesc.DepthClipEnable = TRUE;
+    rasterizerDesc.MultisampleEnable = FALSE;
+    rasterizerDesc.AntialiasedLineEnable = FALSE;
+    rasterizerDesc.ForcedSampleCount = 0;
+    rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+
+    D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
+    depthStencilDesc.DepthEnable = TRUE;
+    depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL; 
+    depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+    depthStencilDesc.StencilEnable = FALSE;
+    depthStencilDesc.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+    depthStencilDesc.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+
+    D3D12_DEPTH_STENCILOP_DESC defaultStencilOp = {}; 
+    defaultStencilOp.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+    defaultStencilOp.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+    defaultStencilOp.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+    defaultStencilOp.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    depthStencilDesc.FrontFace = defaultStencilOp; 
+    depthStencilDesc.BackFace = defaultStencilOp;
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.InputLayout = inputLayoutDesc;
+    psoDesc.pRootSignature = rootSignature;
+    psoDesc.VS = vertexShaderBytecode;
+    psoDesc.PS = pixelShaderBytecode;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.SampleDesc = sampleDesc;
+    psoDesc.SampleMask = 0xffffffff;
+    psoDesc.RasterizerState = rasterizerDesc;
+    psoDesc.BlendState = blendDesc;
+    psoDesc.DepthStencilState = depthStencilDesc;
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    psoDesc.NumRenderTargets = 1;
+
+    return device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineStateObject));
+    
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {

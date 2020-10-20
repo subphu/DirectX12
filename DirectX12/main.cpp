@@ -9,14 +9,17 @@ void Update() {
     if (GetKeyState(KEY_E) & 0x8000) { camPosition += camUp    * -0.001f; }
     if (GetKeyState(KEY_Q) & 0x8000) { camPosition += camUp    *  0.001f; }
 
+    if (GetKeyState(VK_RBUTTON) & 0x8000) {
+        POINT newCursor;
+        GetCursorPos(&newCursor);
 
-    POINT cursor;
+        yaw -= float(newCursor.x - cursor.x) * 0.2f;
+        pitch -= float(newCursor.y - cursor.y) * 0.2f;
+        SetCursorPos(lockedCursor.x, lockedCursor.y);
+    } else {
+        lockedCursor = cursor;
+    }
     GetCursorPos(&cursor);
-
-    yaw   -= float(cursor.x - DefaultCursorX) * 0.1f;
-    pitch -= float(cursor.y - DefaultCursorY) * 0.1f;
-
-    SetCursorPos(DefaultCursorX, DefaultCursorY);
 
     angle += 0.005f;
 
@@ -184,12 +187,6 @@ void Cleanup() {
 }
 
 void InitCamera() {
-    RECT rect;
-    GetWindowRect(hwnd, (LPRECT)&rect);
-    DefaultCursorX = rect.left + Width / 2;
-    DefaultCursorY = rect.top + Height / 2;
-    SetCursorPos(DefaultCursorX, DefaultCursorY);
-
     camPosition   = XMVectorSet(0.0f, 3.0f, 5.0f, 0.0f);
     camTarget     = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     camUp         = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);

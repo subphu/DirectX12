@@ -38,10 +38,9 @@ struct ConstantBuffer {
 HWND hwnd = NULL;
 LPCTSTR WindowName = L"DirectX12";
 LPCTSTR WindowTitle = L"DirectX12";
+
 int Width = 900;
 int Height = 600;
-int DefaultCursorX = Width / 2;
-int DefaultCursorY = Height / 2;
 bool FullScreen = false;
 bool Running = true;
 
@@ -49,6 +48,9 @@ float angle = 0.f;
 float yaw = 0.f;
 float pitch = 0.f;
 float roll = 0.f;
+
+POINT cursor;
+POINT lockedCursor;
 
 XMMATRIX camView;
 XMMATRIX camProjection;

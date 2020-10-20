@@ -2,7 +2,23 @@
 
 void Update() {
 
-    angle += 0.01;
+    if (GetKeyState(KEY_W) & 0x8000) { camPosition += camFront *  0.001f; }
+    if (GetKeyState(KEY_S) & 0x8000) { camPosition += camFront * -0.001f; }
+    if (GetKeyState(KEY_A) & 0x8000) { camPosition += camRight *  0.001f; }
+    if (GetKeyState(KEY_D) & 0x8000) { camPosition += camRight * -0.001f; }
+    if (GetKeyState(KEY_E) & 0x8000) { camPosition += camUp    * -0.001f; }
+    if (GetKeyState(KEY_Q) & 0x8000) { camPosition += camUp    *  0.001f; }
+
+
+    POINT cursor;
+    GetCursorPos(&cursor);
+
+    yaw   -= (cursor.x - DefaultCursorX) * 0.1;
+    pitch -= (cursor.y - DefaultCursorY) * 0.1;
+
+    SetCursorPos(DefaultCursorX, DefaultCursorY);
+
+    angle += 0.005f;
 
     camFront = XMVector3Normalize(XMVectorSet(
         cos(XMConvertToRadians(yaw)) * cos(XMConvertToRadians(pitch)),
@@ -16,7 +32,7 @@ void Update() {
     XMMATRIX model = XMMatrixIdentity();
     XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(angle));
-    XMMATRIX translation = XMMatrixTranslation(0.0f, 0.0f, 2.0f);
+    XMMATRIX translation = XMMatrixTranslation(0.0f, 0.0f, 0.0f);
 
     constantBuffer.model = model * rotation * translation;
     constantBuffer.view = camView;
@@ -168,13 +184,19 @@ void Cleanup() {
 }
 
 void InitCamera() {
-    camPosition   = XMVectorSet(0.0f, 1.0f, 8.0f, 0.0f);
+    RECT rect;
+    GetWindowRect(hwnd, (LPRECT)&rect);
+    DefaultCursorX = rect.left + Width / 2;
+    DefaultCursorY = rect.top + Height / 2;
+    SetCursorPos(DefaultCursorX, DefaultCursorY);
+
+    camPosition   = XMVectorSet(0.0f, 3.0f, 5.0f, 0.0f);
     camTarget     = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     camUp         = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     camFront      = XMVector3Normalize(camTarget - camPosition);
     camRight      = XMVector3Normalize(XMVector3Cross(camFront, camUp));
     camView       = XMMatrixLookAtLH(camPosition, camTarget, camUp);
-    camProjection = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.f), Width / Height, 1.0f, 1000.0f);
+    camProjection = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.f), float(Width) / float(Height), 1.0f, 1000.0f);
 
     XMFLOAT3 tempFront;
     XMStoreFloat3(&tempFront, camFront);
@@ -538,8 +560,8 @@ bool InitD3D() {
     // Fill out the Viewport and scissor rect
     viewport.TopLeftX = 0;
     viewport.TopLeftY = 0;
-    viewport.Width = Width;
-    viewport.Height = Height;
+    viewport.Width = float(Width);
+    viewport.Height = float(Height);
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
 

@@ -15,6 +15,12 @@
 #include <sstream>   
 
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
+#define KEY_W 0x57
+#define KEY_A 0x41
+#define KEY_S 0x53
+#define KEY_D 0x44
+#define KEY_E 0x45
+#define KEY_Q 0x51
 
 using namespace DirectX;
 
@@ -34,12 +40,26 @@ LPCTSTR WindowName = L"DirectX12";
 LPCTSTR WindowTitle = L"DirectX12";
 int Width = 900;
 int Height = 600;
+int DefaultCursorX = Width / 2;
+int DefaultCursorY = Height / 2;
 bool FullScreen = false;
 bool Running = true;
 
-void mainloop();
-bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
-LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+float angle = 0.f;
+float yaw = 0.f;
+float pitch = 0.f;
+float roll = 0.f;
+
+XMMATRIX camView;
+XMMATRIX camProjection;
+
+XMVECTOR camPosition;
+XMVECTOR camTarget;
+XMVECTOR camUp;
+XMVECTOR camFront;
+XMVECTOR camRight;
+
+ConstantBuffer constantBuffer;
 
 // Direct3D
 const int frameBufferCount = 3;
@@ -73,9 +93,12 @@ ID3D12DescriptorHeap* dsDescriptorHeap;
 
 ID3D12DescriptorHeap* mainDescriptorHeap[frameBufferCount]; // this heap will store the descripor to our constant buffer
 ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memory on the gpu where our constant buffer will be placed.
-
-ConstantBuffer constantBuffer;
 UINT8* constantBufferGPUAddress[frameBufferCount];
+
+
+void mainloop();
+bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 bool InitD3D();
 void Update();
@@ -88,17 +111,3 @@ void InitCamera();
 void CreateBuffer(int bufferSize, ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, BYTE* data);
 HRESULT CreateGraphicsPipelineStateObj(DXGI_SAMPLE_DESC sampleDesc, D3D12_SHADER_BYTECODE vertexShaderBytecode, D3D12_SHADER_BYTECODE pixelShaderBytecode);
 
-
-float angle = 0.f;
-float yaw = 0.f;
-float pitch = 0.f;
-float roll = 0.f;
-
-XMMATRIX camView;
-XMMATRIX camProjection;
-
-XMVECTOR camPosition;
-XMVECTOR camTarget;
-XMVECTOR camUp;
-XMVECTOR camFront;
-XMVECTOR camRight;

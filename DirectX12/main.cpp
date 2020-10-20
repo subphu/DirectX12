@@ -13,8 +13,8 @@ void Update() {
     POINT cursor;
     GetCursorPos(&cursor);
 
-    yaw   -= (cursor.x - DefaultCursorX) * 0.1;
-    pitch -= (cursor.y - DefaultCursorY) * 0.1;
+    yaw   -= float(cursor.x - DefaultCursorX) * 0.1f;
+    pitch -= float(cursor.y - DefaultCursorY) * 0.1f;
 
     SetCursorPos(DefaultCursorX, DefaultCursorY);
 
@@ -66,7 +66,7 @@ void UpdatePipeline() {
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = {};
     size_t startPtr = rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
-    rtvHandle.ptr = startPtr + frameIndex * rtvDescriptorSize;
+    rtvHandle.ptr = startPtr + size_t(frameIndex) * size_t(rtvDescriptorSize);
 
     D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 
@@ -721,7 +721,7 @@ HRESULT CreateGraphicsPipelineStateObj(DXGI_SAMPLE_DESC sampleDesc, D3D12_SHADER
     
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nShowCmd) {
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd) {
 
     std::wstringstream ss;
     ss << "Hello world";

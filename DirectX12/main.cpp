@@ -2,35 +2,67 @@
 
 void Update() {
 
-    if (GetKeyState(KEY_W) & 0x8000) { camPosition += camFront *  0.001f; }
-    if (GetKeyState(KEY_S) & 0x8000) { camPosition += camFront * -0.001f; }
-    if (GetKeyState(KEY_A) & 0x8000) { camPosition += camRight *  0.001f; }
-    if (GetKeyState(KEY_D) & 0x8000) { camPosition += camRight * -0.001f; }
-    if (GetKeyState(KEY_E) & 0x8000) { camPosition += camUp    * -0.001f; }
-    if (GetKeyState(KEY_Q) & 0x8000) { camPosition += camUp    *  0.001f; }
+    //if (GetKeyState(KEY_W) & 0x8000) { camPosition += camFront *  0.001f; }
+    //if (GetKeyState(KEY_S) & 0x8000) { camPosition += camFront * -0.001f; }
+    //if (GetKeyState(KEY_A) & 0x8000) { camPosition += camRight *  0.001f; }
+    //if (GetKeyState(KEY_D) & 0x8000) { camPosition += camRight * -0.001f; }
+    //if (GetKeyState(KEY_E) & 0x8000) { camPosition += camUp    * -0.001f; }
+    //if (GetKeyState(KEY_Q) & 0x8000) { camPosition += camUp    *  0.001f; }
 
-    if (GetKeyState(VK_RBUTTON) & 0x8000) {
+    //if (GetKeyState(VK_LBUTTON) & 0x8000) {
+    //    POINT newCursor;
+    //    GetCursorPos(&newCursor);
+
+    //    yaw -= float(newCursor.x - cursor.x) * 0.2f;
+    //    pitch -= float(newCursor.y - cursor.y) * 0.2f;
+    //    SetCursorPos(lockedCursor.x, lockedCursor.y);
+    //} else {
+    //    lockedCursor = cursor;
+    //}
+    //GetCursorPos(&cursor);
+
+    //angle += 0.005f;
+
+    //camFront = XMVector3Normalize(XMVectorSet(
+    //    cos(XMConvertToRadians(yaw)) * cos(XMConvertToRadians(pitch)),
+    //    sin(XMConvertToRadians(pitch)),
+    //    sin(XMConvertToRadians(yaw)) * cos(XMConvertToRadians(pitch)),
+    //    1.0f
+    //));
+    //camRight = XMVector3Normalize(XMVector3Cross(camFront, camUp));
+    //camView = XMMatrixLookAtLH(camPosition, camPosition + camFront, camUp);
+
+    if (GetKeyState(VK_LBUTTON) & 0x8000) {
         POINT newCursor;
         GetCursorPos(&newCursor);
 
-        yaw -= float(newCursor.x - cursor.x) * 0.2f;
-        pitch -= float(newCursor.y - cursor.y) * 0.2f;
-        SetCursorPos(lockedCursor.x, lockedCursor.y);
-    } else {
-        lockedCursor = cursor;
+        float distance = 0.0f;
+        XMStoreFloat(&distance, XMVector3Length(camPosition));
+
+        camPosition += camFront * mouseZ * 0.02f;
+        camPosition += camRight * float(newCursor.x - cursor.x) * 0.2f;
+        camPosition += camUp    * float(newCursor.y - cursor.y) * 0.2f;
+
+        float newDistance = 0.0f;
+        XMStoreFloat(&newDistance, XMVector3Length(camPosition));
+        camPosition = camPosition * distance / newDistance;
+
+        camFront = XMVector3Normalize(camTarget - camPosition);
+        camRight = XMVector3Normalize(XMVector3Cross(camFront, XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)));
+        camUp    = XMVector3Normalize(XMVector3Cross(camRight, camFront));
+
+        camTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+        camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
     }
+
+    if (mouseZ != 0) {
+        camPosition += camFront * mouseZ * 0.002f;
+        camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
+        mouseZ = 0;
+    }
+
     GetCursorPos(&cursor);
-
-    angle += 0.005f;
-
-    camFront = XMVector3Normalize(XMVectorSet(
-        cos(XMConvertToRadians(yaw)) * cos(XMConvertToRadians(pitch)),
-        sin(XMConvertToRadians(pitch)),
-        sin(XMConvertToRadians(yaw)) * cos(XMConvertToRadians(pitch)),
-        1.0f
-    ));
-    camRight = XMVector3Normalize(XMVector3Cross(camFront, camUp));
-    camView = XMMatrixLookAtLH(camPosition, camPosition + camFront, camUp);
+    
 
     XMMATRIX model = XMMatrixIdentity();
     XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
@@ -43,6 +75,21 @@ void Update() {
 
     memcpy(constantBufferGPUAddress[frameIndex], &constantBuffer, sizeof(constantBuffer));
 
+}
+
+void InitCamera() {
+    camPosition = XMVectorSet(0.0f, 3.0f, 5.0f, 0.0f);
+    camTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    camUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    camFront = XMVector3Normalize(camTarget - camPosition);
+    camRight = XMVector3Normalize(XMVector3Cross(camFront, camUp));
+    camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
+    camProjection = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.f), float(Width) / float(Height), 1.0f, 1000.0f);
+
+    XMFLOAT3 tempFront;
+    XMStoreFloat3(&tempFront, camFront);
+    yaw = XMConvertToDegrees(atan2(tempFront.z, tempFront.x));
+    pitch = XMConvertToDegrees(atan2(tempFront.y, -tempFront.z));
 }
 
 void UpdatePipeline() {
@@ -75,10 +122,10 @@ void UpdatePipeline() {
 
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
-    const float clearColor[] = { 0.1f, 0.1f, 0.1f, 1.0f };
+    const float clearColor[] = { 0.5f, 0.5f, 0.5f, 1.0f };
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
-    commandList->ClearDepthStencilView(dsDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     // draw triangle
     commandList->SetGraphicsRootSignature(rootSignature); 
@@ -184,21 +231,6 @@ void Cleanup() {
 
     SAFE_RELEASE(depthStencilBuffer);
     SAFE_RELEASE(dsDescriptorHeap);
-}
-
-void InitCamera() {
-    camPosition   = XMVectorSet(0.0f, 3.0f, 5.0f, 0.0f);
-    camTarget     = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-    camUp         = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    camFront      = XMVector3Normalize(camTarget - camPosition);
-    camRight      = XMVector3Normalize(XMVector3Cross(camFront, camUp));
-    camView       = XMMatrixLookAtLH(camPosition, camTarget, camUp);
-    camProjection = XMMatrixPerspectiveFovLH(XMConvertToRadians(60.f), float(Width) / float(Height), 1.0f, 1000.0f);
-
-    XMFLOAT3 tempFront;
-    XMStoreFloat3(&tempFront, camFront);
-    yaw     = XMConvertToDegrees(atan2(tempFront.z, tempFront.x));
-    pitch   = XMConvertToDegrees(atan2(tempFront.y, -tempFront.z));
 }
 
 bool InitD3D() {
@@ -793,6 +825,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (wParam == VK_ESCAPE) {
             DestroyWindow(hwnd);
         }
+        return 0;
+
+    case WM_MOUSEWHEEL:
+        mouseZ += GET_WHEEL_DELTA_WPARAM(wParam);
         return 0;
 
     case WM_DESTROY:

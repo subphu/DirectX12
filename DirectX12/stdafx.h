@@ -51,6 +51,7 @@ float roll = 0.f;
 
 POINT cursor;
 POINT lockedCursor;
+float mouseZ = 0.f;
 
 XMMATRIX camView;
 XMMATRIX camProjection;

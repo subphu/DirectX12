@@ -61,18 +61,17 @@ void InitCamera() {
     pitch = XMConvertToDegrees(atan2(tempFront.y, -tempFront.z));
 }
 
+void UpdateComputePipeline() {
+}
+
 void UpdatePipeline() {
     HRESULT hr;
 
     WaitForPreviousFrame();
 
-    hr = commandAllocator[frameIndex]->Reset();
-    if (FAILED(hr)) Running = false; 
-
-    //hr = commandList->Reset(commandAllocator[frameIndex], NULL);
-    hr = commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
-    if (FAILED(hr)) Running = false; 
-
+    commandAllocator[frameIndex]->Reset();
+    commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
+    
 
     D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
     resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -125,7 +124,7 @@ void UpdatePipeline() {
 
 void Render() {
     HRESULT hr;
-
+    UpdateComputePipeline();
     UpdatePipeline();
      
     ID3D12CommandList* ppCommandLists[] = { commandList };
@@ -179,11 +178,10 @@ void Cleanup() {
         WaitForPreviousFrame();
     } 
 
-    SAFE_RELEASE(device);
-    SAFE_RELEASE(swapChain);
-    SAFE_RELEASE(commandQueue);
-    SAFE_RELEASE(rtvDescriptorHeap);
-    SAFE_RELEASE(commandList);
+    SAFE_RELEASE(particleBuffer);
+
+    SAFE_RELEASE(depthStencilBuffer);
+    SAFE_RELEASE(dsDescriptorHeap);
 
     for (int i = 0; i < frameBufferCount; ++i) {
         SAFE_RELEASE(renderTargets[i]);
@@ -194,15 +192,21 @@ void Cleanup() {
         SAFE_RELEASE(constantBufferUploadHeap[i]);
     };
 
-    SAFE_RELEASE(pipelineStateObject);
-    SAFE_RELEASE(rootSignature);
-    SAFE_RELEASE(computeStateObject);
-    SAFE_RELEASE(computeRootSignature);
     SAFE_RELEASE(vertexBuffer);
     SAFE_RELEASE(indexBuffer);
 
-    SAFE_RELEASE(depthStencilBuffer);
-    SAFE_RELEASE(dsDescriptorHeap);
+    SAFE_RELEASE(computeStateObject);
+    SAFE_RELEASE(computeRootSignature);
+
+    SAFE_RELEASE(pipelineStateObject);
+    SAFE_RELEASE(rootSignature);
+
+    SAFE_RELEASE(commandList);
+    SAFE_RELEASE(srvDescriptorHeap);
+    SAFE_RELEASE(rtvDescriptorHeap);
+    SAFE_RELEASE(swapChain);
+    SAFE_RELEASE(commandQueue);
+    SAFE_RELEASE(device);
 }
 
 bool InitD3D() {
@@ -236,6 +240,8 @@ bool InitD3D() {
     CreateConstantBuffer();
 
     CreateDepthStencilBuffer();
+
+    CreateComputeBuffer();
 
     // execute the command list
     commandList->Close();
@@ -327,6 +333,13 @@ void CreateRTV() {
         device->CreateRenderTargetView(renderTargets[i], nullptr, rtvHandle);
         rtvHandle.ptr += rtvDescriptorSize;
     }
+    
+    D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+    srvHeapDesc.NumDescriptors = 1;
+    srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&srvDescriptorHeap));
+    srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 void CreateCommandList() {
@@ -347,21 +360,21 @@ void CreateFence() {
     if (fenceEvent == nullptr) return;
 }
 
-void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data) {
+void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data, D3D12_RESOURCE_FLAGS dstFlag) {
 
     // create upload universal buffer
-    D3D12_RESOURCE_DESC resourceDesc = {};
-    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    resourceDesc.Alignment = 0;
-    resourceDesc.Width = bufferSize;
-    resourceDesc.Height = 1;
-    resourceDesc.DepthOrArraySize = 1;
-    resourceDesc.MipLevels = 1;
-    resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
-    resourceDesc.SampleDesc.Count = 1;
-    resourceDesc.SampleDesc.Quality = 0;
-    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-    resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+    D3D12_RESOURCE_DESC resourceDescUpload = {};
+    resourceDescUpload.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    resourceDescUpload.Alignment = 0;
+    resourceDescUpload.Width = bufferSize;
+    resourceDescUpload.Height = 1;
+    resourceDescUpload.DepthOrArraySize = 1;
+    resourceDescUpload.MipLevels = 1;
+    resourceDescUpload.Format = DXGI_FORMAT_UNKNOWN;
+    resourceDescUpload.SampleDesc.Count = 1;
+    resourceDescUpload.SampleDesc.Quality = 0;
+    resourceDescUpload.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    resourceDescUpload.Flags = D3D12_RESOURCE_FLAG_NONE;
 
     D3D12_HEAP_PROPERTIES heapPropertiesUpload = {};
     heapPropertiesUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
@@ -374,13 +387,16 @@ void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data) {
     device->CreateCommittedResource(
         &heapPropertiesUpload,
         D3D12_HEAP_FLAG_NONE,
-        &resourceDesc,
+        &resourceDescUpload,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&srcBuffer));
     srcBuffer->SetName(L"Buffer Upload Resource Heap");
 
     // create default GPU buffer
+    D3D12_RESOURCE_DESC resourceDescDefault = resourceDescUpload;
+    resourceDescDefault.Flags = dstFlag;
+
     D3D12_HEAP_PROPERTIES heapPropertiesDefault = {};
     heapPropertiesDefault.Type = D3D12_HEAP_TYPE_DEFAULT;
     heapPropertiesDefault.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -391,7 +407,7 @@ void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data) {
     device->CreateCommittedResource(
         &heapPropertiesDefault,
         D3D12_HEAP_FLAG_NONE,
-        &resourceDesc,
+        &resourceDescDefault,
         D3D12_RESOURCE_STATE_COPY_DEST,
         nullptr,
         IID_PPV_ARGS(dstBuffer));
@@ -465,7 +481,6 @@ void CreateDepthStencilBuffer() {
         &depthOptimizedClearValue,
         IID_PPV_ARGS(&depthStencilBuffer)
     );
-    device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&dsDescriptorHeap));
 
     dsDescriptorHeap->SetName(L"Depth/Stencil Resource Heap");
 
@@ -526,6 +541,50 @@ void CreateConstantBuffer() {
         constantBufferUploadHeap[i]->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferGPUAddress[i]));
         memcpy(constantBufferGPUAddress[i], &constantBuffer, sizeof(constantBuffer));
     }
+}
+
+void CreateComputeBuffer() {
+    std::vector<XMFLOAT4> data;
+    data.resize(particleCount);
+    const UINT dataSize = particleCount * sizeof(XMFLOAT4);
+
+    srand(0);
+    for (UINT i = 0; i < particleCount; i++) {
+        data[i].x = static_cast<float>((rand() % 10000) - 5000) / 2000;
+        data[i].y = static_cast<float>(rand() % 10000) / 2000;
+        data[i].z = static_cast<float>((rand() % 10000) - 5000) / 2000;
+    }
+
+    CreateBuffer(dataSize, &particleBuffer, reinterpret_cast<BYTE*>(data.data()), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Buffer.FirstElement = 0;
+    srvDesc.Buffer.NumElements = particleCount;
+    srvDesc.Buffer.StructureByteStride = sizeof(XMFLOAT4);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    srvHandle.ptr += SrvParticle * srvDescriptorSize;
+    device->CreateShaderResourceView(particleBuffer, &srvDesc, srvHandle);
+
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+    uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+    uavDesc.Buffer.FirstElement = 0;
+    uavDesc.Buffer.NumElements = particleCount;
+    uavDesc.Buffer.StructureByteStride = sizeof(XMFLOAT4);
+    uavDesc.Buffer.CounterOffsetInBytes = 0;
+    uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE uavHandle = srvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    uavHandle.ptr += UavParticle * srvDescriptorSize;
+    device->CreateUnorderedAccessView(particleBuffer, nullptr, &uavDesc, uavHandle);
+    return;
 }
 
 HRESULT CreateComputePipelineStateObj() {

@@ -13,6 +13,8 @@
 #include <string>      
 #include <iostream>
 #include <sstream>   
+#include <vector>
+
 
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
 #define KEY_W 0x57
@@ -100,7 +102,15 @@ UINT8* constantBufferGPUAddress[frameBufferCount];
 
 ID3D12PipelineState* computeStateObject;
 ID3D12RootSignature* computeRootSignature;
+std::vector<XMFLOAT4> particles;
+ID3D12Resource* particleBuffer;
+ID3D12DescriptorHeap* srvDescriptorHeap;
 
+int srvDescriptorSize;
+
+int particleCount = 10000;
+void CreateComputeBuffer();
+void UpdateComputePipeline();
 
 void mainloop();
 bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
@@ -121,12 +131,24 @@ void CreateSwapChain(IDXGIFactory4* dxgiFactory);
 void CreateRTV();
 void CreateCommandList();
 void CreateFence();
-void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data);
+void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data, D3D12_RESOURCE_FLAGS dstFlag = D3D12_RESOURCE_FLAG_NONE);
 void CreateDepthStencilBuffer();
 void CreateConstantBuffer();
 HRESULT CreateGraphicsPipelineStateObj();
 HRESULT CreateComputePipelineStateObj();
 
+enum RootParameters : UINT32 {
+    RootParameterCB = 0,
+    RootParameterSRV,
+    RootParameterUAV,
+    RootParametersCount
+};
+
+enum DescriptorHeapIndex : UINT32 {
+    SrvParticle,
+    UavParticle,
+    DescriptorCount
+};
 
 DWORD iList[] = {
     0, 1, 2,   0, 2, 3,

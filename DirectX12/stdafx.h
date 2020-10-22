@@ -50,7 +50,6 @@ float pitch = 0.f;
 float roll = 0.f;
 
 POINT cursor;
-POINT lockedCursor;
 float mouseZ = 0.f;
 
 XMMATRIX camView;
@@ -99,6 +98,10 @@ ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memor
 UINT8* constantBufferGPUAddress[frameBufferCount];
 
 
+ID3D12PipelineState* computeStateObject;
+ID3D12RootSignature* computeRootSignature;
+
+
 void mainloop();
 bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -110,7 +113,38 @@ void Render();
 void Cleanup();
 void WaitForPreviousFrame();
 void InitCamera();
+void InitViewport();
 
-void CreateBuffer(int bufferSize, ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, BYTE* data);
-HRESULT CreateGraphicsPipelineStateObj(DXGI_SAMPLE_DESC sampleDesc, D3D12_SHADER_BYTECODE vertexShaderBytecode, D3D12_SHADER_BYTECODE pixelShaderBytecode);
+void CreateDevice(IDXGIFactory4* dxgiFactory);
+void CreateCommandQueue();
+void CreateSwapChain(IDXGIFactory4* dxgiFactory);
+void CreateRTV();
+void CreateCommandList();
+void CreateFence();
+void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data);
+void CreateDepthStencilBuffer();
+void CreateConstantBuffer();
+HRESULT CreateGraphicsPipelineStateObj();
+HRESULT CreateComputePipelineStateObj();
 
+
+DWORD iList[] = {
+    0, 1, 2,   0, 2, 3,
+    4, 6, 5,   4, 7, 6,
+    4, 5, 1,   4, 1, 0,
+    3, 2, 6,   3, 6, 7,
+    1, 5, 6,   1, 6, 2,
+    4, 0, 3,   4, 3, 7
+};
+
+
+Vertex vList[] = {
+    { { -0.5f, -0.5f, -0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+    { { -0.5f, +0.5f, -0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
+    { { +0.5f, +0.5f, -0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
+    { { +0.5f, -0.5f, -0.5f}, { 1.0f, 1.0f, 0.0f, 1.0f } },
+    { { -0.5f, -0.5f, +0.5f}, { 0.0f, 1.0f, 1.0f, 1.0f } },
+    { { -0.5f, +0.5f, +0.5f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
+    { { +0.5f, +0.5f, +0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f } },
+    { { +0.5f, -0.5f, +0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+};

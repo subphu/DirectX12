@@ -173,6 +173,7 @@ void mainloop() {
 }
 
 void Cleanup() { 
+
     for (int i = 0; i < frameBufferCount; ++i) {
         frameIndex = i;
         WaitForPreviousFrame();
@@ -195,6 +196,8 @@ void Cleanup() {
 
     SAFE_RELEASE(pipelineStateObject);
     SAFE_RELEASE(rootSignature);
+    SAFE_RELEASE(computeStateObject);
+    SAFE_RELEASE(computeRootSignature);
     SAFE_RELEASE(vertexBuffer);
     SAFE_RELEASE(indexBuffer);
 
@@ -212,7 +215,10 @@ bool InitD3D() {
     CreateRTV();
     CreateCommandList();
     CreateFence();
+
     CreateGraphicsPipelineStateObj();
+
+    CreateComputePipelineStateObj();
 
     // create input buffer
     int vBufferSize = sizeof(vList);
@@ -318,9 +324,7 @@ void CreateRTV() {
 
     for (int i = 0; i < frameBufferCount; i++) {
         swapChain->GetBuffer(i, IID_PPV_ARGS(&renderTargets[i]));
-
         device->CreateRenderTargetView(renderTargets[i], nullptr, rtvHandle);
-
         rtvHandle.ptr += rtvDescriptorSize;
     }
 }
@@ -524,7 +528,70 @@ void CreateConstantBuffer() {
     }
 }
 
-HRESULT CreateComputePipelineStateObj(D3D12_SHADER_BYTECODE computeShaderBytecode) {
+HRESULT CreateComputePipelineStateObj() {
+    ID3DBlob* computeShader;
+    ID3DBlob* errorBuff;
+
+    HRESULT hr = D3DCompileFromFile(L"ComputeShader.hlsl",
+        nullptr, nullptr,
+        "main", "cs_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0,
+        &computeShader, &errorBuff);
+
+    if (FAILED(hr)) {
+        OutputDebugStringA((char*)errorBuff->GetBufferPointer());
+        return hr;
+    }
+
+    D3D12_SHADER_BYTECODE computeShaderBytecode = {};
+    computeShaderBytecode.BytecodeLength = computeShader->GetBufferSize();
+    computeShaderBytecode.pShaderBytecode = computeShader->GetBufferPointer();
+
+    // create compute root signature
+
+
+    D3D12_DESCRIPTOR_RANGE  descriptorTableRanges[2];
+    descriptorTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    descriptorTableRanges[0].NumDescriptors = 1;
+    descriptorTableRanges[0].BaseShaderRegister = 0;
+    descriptorTableRanges[0].RegisterSpace = 0;
+    descriptorTableRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+    descriptorTableRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    descriptorTableRanges[1].NumDescriptors = 1;
+    descriptorTableRanges[1].BaseShaderRegister = 0;
+    descriptorTableRanges[1].RegisterSpace = 0;
+    descriptorTableRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+
+    D3D12_ROOT_DESCRIPTOR_TABLE descriptorTables[2];
+    descriptorTables[0].NumDescriptorRanges = 1;
+    descriptorTables[0].pDescriptorRanges = &descriptorTableRanges[0];
+    descriptorTables[1].NumDescriptorRanges = 1;
+    descriptorTables[1].pDescriptorRanges = &descriptorTableRanges[1];
+
+    D3D12_ROOT_PARAMETER rootParameters[2];
+    rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameters[0].DescriptorTable = descriptorTables[0];
+    rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    rootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameters[1].DescriptorTable = descriptorTables[1];
+    rootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.NumParameters = _countof(rootParameters);
+    rootSignatureDesc.pParameters = rootParameters;
+    rootSignatureDesc.NumStaticSamplers = 0;
+    rootSignatureDesc.pStaticSamplers = nullptr;
+    rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+    ID3DBlob* signature;
+    D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+
+    device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature));
+
+    // create pso
     D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
     computePsoDesc.pRootSignature = computeRootSignature;
     computePsoDesc.CS = computeShaderBytecode;
@@ -533,19 +600,14 @@ HRESULT CreateComputePipelineStateObj(D3D12_SHADER_BYTECODE computeShaderBytecod
 }
 
 HRESULT CreateGraphicsPipelineStateObj() {
-    // compile vertex shader
     ID3DBlob* vertexShader;
     ID3DBlob* errorBuff;
 
     HRESULT hr = D3DCompileFromFile(L"VertexShader.hlsl",
-        nullptr,
-        nullptr,
-        "main",
-        "vs_5_0",
-        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
-        0,
-        &vertexShader,
-        &errorBuff);
+        nullptr, nullptr,
+        "main", "vs_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0,
+        &vertexShader, &errorBuff);
 
     if (FAILED(hr)) {
         OutputDebugStringA((char*)errorBuff->GetBufferPointer());
@@ -556,17 +618,12 @@ HRESULT CreateGraphicsPipelineStateObj() {
     vertexShaderBytecode.BytecodeLength = vertexShader->GetBufferSize();
     vertexShaderBytecode.pShaderBytecode = vertexShader->GetBufferPointer();
 
-    // compile pixel shader
     ID3DBlob* pixelShader;
     hr = D3DCompileFromFile(L"PixelShader.hlsl",
-        nullptr,
-        nullptr,
-        "main",
-        "ps_5_0",
-        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
-        0,
-        &pixelShader,
-        &errorBuff);
+        nullptr, nullptr,
+        "main", "ps_5_0",
+        D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0,
+        &pixelShader, &errorBuff);
 
     if (FAILED(hr)) {
         OutputDebugStringA((char*)errorBuff->GetBufferPointer());
@@ -601,17 +658,14 @@ HRESULT CreateGraphicsPipelineStateObj() {
     rootSignatureDesc.pParameters = rootParameters;
     rootSignatureDesc.NumStaticSamplers = 0;
     rootSignatureDesc.pStaticSamplers = nullptr;
-    rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS |
-        D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+    rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
     ID3DBlob* signature;
     D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
 
     device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
 
+    // create pso
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
@@ -652,6 +706,12 @@ HRESULT CreateGraphicsPipelineStateObj() {
     rasterizerDesc.ForcedSampleCount = 0;
     rasterizerDesc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
 
+    D3D12_DEPTH_STENCILOP_DESC defaultStencilOp = {};
+    defaultStencilOp.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+    defaultStencilOp.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+    defaultStencilOp.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+    defaultStencilOp.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+
     D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
     depthStencilDesc.DepthEnable = TRUE;
     depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL; 
@@ -659,12 +719,6 @@ HRESULT CreateGraphicsPipelineStateObj() {
     depthStencilDesc.StencilEnable = FALSE;
     depthStencilDesc.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
     depthStencilDesc.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
-
-    D3D12_DEPTH_STENCILOP_DESC defaultStencilOp = {}; 
-    defaultStencilOp.StencilFailOp = D3D12_STENCIL_OP_KEEP;
-    defaultStencilOp.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
-    defaultStencilOp.StencilPassOp = D3D12_STENCIL_OP_KEEP;
-    defaultStencilOp.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
     depthStencilDesc.FrontFace = defaultStencilOp; 
     depthStencilDesc.BackFace = defaultStencilOp;
 

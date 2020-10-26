@@ -9,6 +9,8 @@ cbuffer ConstantBuffer : register(b0) {
     float4x4 projection;
 };
 
+StructuredBuffer<float4> g_bufPos;
+
 vs_out main( float4 pos : POSITION, float4 color : COLOR) {
     vs_out output;
 

@@ -66,19 +66,18 @@ XMVECTOR camRight;
 ConstantBuffer constantBuffer;
 
 // Direct3D
-const int frameBufferCount = 3;
+const int frameBufferCount = 2;
 const int threadCount = 1;
-const int commandAllocatorCount = frameBufferCount * threadCount;
-const int fenceCount = commandAllocatorCount;
+const int fenceCount = frameBufferCount;
 
-int frameIndex;
-int rtvDescriptorSize;
+UINT frameIndex;
+UINT rtvDescriptorSize;
 ID3D12Device* device;
 IDXGISwapChain3* swapChain;
 ID3D12DescriptorHeap* rtvDescriptorHeap;
 ID3D12Resource* renderTargets[frameBufferCount];
 ID3D12CommandQueue* commandQueue;
-ID3D12CommandAllocator* commandAllocator[commandAllocatorCount];
+ID3D12CommandAllocator* commandAllocator[frameBufferCount];
 ID3D12GraphicsCommandList* commandList;
 ID3D12Fence* fence[fenceCount];
 HANDLE fenceEvent;
@@ -100,18 +99,6 @@ ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memor
 UINT8* constantBufferGPUAddress[frameBufferCount];
 
 
-ID3D12PipelineState* computeStateObject;
-ID3D12RootSignature* computeRootSignature;
-std::vector<XMFLOAT4> particles;
-ID3D12Resource* particleBuffer;
-ID3D12DescriptorHeap* srvDescriptorHeap;
-
-int srvDescriptorSize;
-
-int particleCount = 10000;
-void CreateComputeBuffer();
-void UpdateComputePipeline();
-
 void mainloop();
 bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -131,24 +118,75 @@ void CreateSwapChain(IDXGIFactory4* dxgiFactory);
 void CreateRTV();
 void CreateCommandList();
 void CreateFence();
-void CreateBuffer(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data, D3D12_RESOURCE_FLAGS dstFlag = D3D12_RESOURCE_FLAG_NONE);
+void CreateBufferTransition(int bufferSize, ID3D12Resource** dstBuffer, BYTE* data, 
+    D3D12_RESOURCE_FLAGS dstFlag = D3D12_RESOURCE_FLAG_NONE,
+    D3D12_RESOURCE_STATES dstStates = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 void CreateDepthStencilBuffer();
 void CreateConstantBuffer();
 HRESULT CreateGraphicsPipelineStateObj();
+
+// Compute pipeline
+ID3D12PipelineState* computeStateObject;
+ID3D12RootSignature* computeRootSignature;
+
+ID3D12DescriptorHeap* srvUavDescriptorHeap;
+ID3D12Resource* particleBuffer0[threadCount];
+ID3D12Resource* particleBuffer1[threadCount];
+std::vector<XMFLOAT4> particles;
+
+UINT srvIndex[threadCount]; // Denotes which of the particle buffer resource views is the SRV (0 or 1). The UAV is 1 - srvIndex.
+UINT srvUavDescriptorSize;
+
+ID3D12CommandQueue* computeCommandQueue[threadCount];
+ID3D12CommandAllocator* computeCommandAllocator[threadCount];
+ID3D12GraphicsCommandList* computeCommandList[threadCount];
+
+ID3D12Fence* computeFence[threadCount];
+HANDLE computeFenceEvent[threadCount];
+UINT64 computeFenceValue[threadCount];
+
+HANDLE threadHandles[threadCount];
+LONG volatile terminating;
+
+int particleCount = 10000;
+
+void CreateComputeDescriptorHeap();
+void CreateComputeRootSignature();
 HRESULT CreateComputePipelineStateObj();
+void CreateComputeCommandList();
+void CreateComputeBuffer();
+void UpdateComputePipeline(UINT threadIndex);
 
-enum RootParameters : UINT32 {
-    RootParameterCB = 0,
-    RootParameterSRV,
-    RootParameterUAV,
-    RootParametersCount
+DWORD ComputeThread(int threadIndex);
+
+// Indices of the root signature parameters.
+enum GraphicsRootParameters : UINT32 {
+    GraphicsRootCBV = 0,
+    GraphicsRootSRVTable,
+    GraphicsRootParametersCount
 };
 
+enum ComputeRootParameters : UINT32 {
+    ComputeRootCBV = 0,
+    ComputeRootSRVTable,
+    ComputeRootUAVTable,
+    ComputeRootParametersCount
+};
+
+// Indices of shader resources in the descriptor heap.
 enum DescriptorHeapIndex : UINT32 {
-    SrvParticle,
-    UavParticle,
-    DescriptorCount
+    UavParticle0 = 0,
+    UavParticle1 = UavParticle0 + threadCount,
+    SrvParticle0 = UavParticle1 + threadCount,
+    SrvParticle1 = SrvParticle0 + threadCount,
+    DescriptorCount = SrvParticle1 + threadCount
 };
+
+
+static DWORD WINAPI ThreadProc(int* threadIndex) {
+    return ComputeThread(*threadIndex);
+}
+
 
 DWORD iList[] = {
     0, 1, 2,   0, 2, 3,

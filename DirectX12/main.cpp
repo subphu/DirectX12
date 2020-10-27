@@ -5,9 +5,15 @@ void RestartComputeBuffer() {
         return;
     }
     
-    for (int i = 0; i < threadCount; i++) {
+    for (int i = 0; i < frameBufferCount; i++) {
+        if (fence[i]->GetCompletedValue() < fenceValue[i]) {
+            fence[i]->SetEventOnCompletion(fenceValue[i], fenceEvent);
+            WaitForSingleObject(fenceEvent, INFINITE);
+        }
+
         SuspendThread(threadHandles[i]);
     }
+
     commandAllocator[frameIndex]->Reset();
     commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
     CreateComputeBuffer();
@@ -222,7 +228,6 @@ void UpdateComputePipeline(UINT threadIndex) {
 void Render() {
     WaitForPreviousFrame();
 
-    HRESULT hr;
 
     UpdatePipeline();
 
@@ -230,21 +235,17 @@ void Render() {
      
     commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    hr = commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
-    if (FAILED(hr)) Running = false;
+    commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
 
-    hr = swapChain->Present(0, 0);
-    if (FAILED(hr)) Running = false; 
+    swapChain->Present(0, 0);
 }
 
 void WaitForPreviousFrame() {
-    HRESULT hr;
 
     frameIndex = swapChain->GetCurrentBackBufferIndex();
 
     if (fence[frameIndex]->GetCompletedValue() < fenceValue[frameIndex]) {
-        hr = fence[frameIndex]->SetEventOnCompletion(fenceValue[frameIndex], fenceEvent);
-        if (FAILED(hr)) Running = false; 
+        fence[frameIndex]->SetEventOnCompletion(fenceValue[frameIndex], fenceEvent);
 
         WaitForSingleObject(fenceEvent, INFINITE);
     }
@@ -413,10 +414,12 @@ DWORD ComputeThread(int* threadIndex) {
         computeCommandQueue[thIdx]->ExecuteCommandLists(1, ppCommandLists);
 
         // Wait for the compute shader to complete the simulation.
-        UINT64 threadFenceValue = InterlockedIncrement(&computeFenceValue[thIdx]);
-        computeCommandQueue[thIdx]->Signal(computeFence[thIdx], threadFenceValue);
-        computeFence[thIdx]->SetEventOnCompletion(threadFenceValue, computeFenceEvent[thIdx]);
-        WaitForSingleObject(computeFenceEvent[thIdx], INFINITE);
+        computeFenceValue[thIdx]++;
+        computeCommandQueue[thIdx]->Signal(computeFence[thIdx], computeFenceValue[thIdx]);
+        if (computeFence[thIdx]->GetCompletedValue() < computeFenceValue[thIdx]) {
+            computeFence[thIdx]->SetEventOnCompletion(computeFenceValue[thIdx], computeFenceEvent[thIdx]);
+            WaitForSingleObject(computeFenceEvent[thIdx], INFINITE);
+        }
 
         // Swap the indices to the SRV and UAV.
         srvIndex[thIdx] = 1 - srvIndex[thIdx];

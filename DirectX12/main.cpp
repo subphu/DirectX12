@@ -1,6 +1,41 @@
 #include "stdafx.h"
 
+void RestartComputeBuffer() {
+    if (prevSpaceKey || !spaceKey) {
+        return;
+    }
+    
+    for (int i = 0; i < threadCount; i++) {
+        SuspendThread(threadHandles[i]);
+    }
+    commandAllocator[frameIndex]->Reset();
+    commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
+    CreateComputeBuffer();
+    commandList->Close();
+    ID3D12CommandList* ppCommandLists[] = { commandList };
+
+    commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    fenceValue[frameIndex]++;
+    commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
+    
+    for (int i = 0; i < threadCount; i++) {
+        ResumeThread(threadHandles[i]);
+    }
+
+    return;
+}
+
 void Update() {
+    if (GetKeyState(KEY_SPACE) & 0x8000) {
+        prevSpaceKey = spaceKey;
+        spaceKey = true;
+        RestartComputeBuffer();
+    } else {
+        prevSpaceKey = spaceKey;
+        spaceKey = false;
+    }
+
     if (GetKeyState(VK_LBUTTON) & 0x8000) {
         POINT newCursor;
         GetCursorPos(&newCursor);

@@ -45,6 +45,8 @@ struct ConstantBuffer {
 HWND hwnd = NULL;
 LPCTSTR WindowName = L"DirectX12";
 LPCTSTR WindowTitle = L"DirectX12";
+bool spaceKey = false;
+bool prevSpaceKey = false;
 
 int Width = 900;
 int Height = 600;

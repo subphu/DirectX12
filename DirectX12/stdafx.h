@@ -23,6 +23,7 @@
 #define KEY_D 0x44
 #define KEY_E 0x45
 #define KEY_Q 0x51
+#define KEY_SPACE 0x20
 
 using namespace DirectX;
 
@@ -50,7 +51,7 @@ int Height = 600;
 bool FullScreen = false;
 bool Running = true;
 
-int particleCount = 10000;
+UINT particleCount = 10000;
 
 float angle = 0.f;
 float yaw = 0.f;
@@ -111,6 +112,8 @@ UINT8* constantBufferData;
 void mainloop();
 bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullscreen);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+void RestartComputeBuffer();
+
 
 bool InitD3D();
 void Update();
@@ -166,7 +169,7 @@ void CreateComputeCommandList();
 void CreateComputeBuffer();
 void UpdateComputePipeline(UINT threadIndex);
 
-DWORD ComputeThread(int threadIndex);
+DWORD ComputeThread(int* threadIndex);
 
 // Indices of the root signature parameters.
 enum GraphicsRootParameters : UINT32 {

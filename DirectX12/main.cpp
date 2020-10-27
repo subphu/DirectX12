@@ -37,7 +37,7 @@ void Update() {
     XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(angle+45));
     XMMATRIX translation = XMMatrixTranslation(-1.0f, 0.0f, 0.0f);
-    XMMATRIX scale = XMMatrixScaling(0.05, 0.05, 0.05);
+    XMMATRIX scale = XMMatrixScaling(0.05f, 0.05f, 0.05f);
 
     cbData.model = model * rotation * translation * scale;
     cbData.view = camView;
@@ -190,13 +190,13 @@ void Render() {
     HRESULT hr;
 
     UpdatePipeline();
-     
+
     ID3D12CommandList* ppCommandLists[] = { commandList };
      
     commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     hr = commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
-    if (FAILED(hr)) Running = false; 
+    if (FAILED(hr)) Running = false;
 
     hr = swapChain->Present(0, 0);
     if (FAILED(hr)) Running = false; 
@@ -356,7 +356,7 @@ void CreateComputeCommandList() {
         threadHandles[i] = CreateThread(
             nullptr, 0,
             reinterpret_cast<LPTHREAD_START_ROUTINE>(ComputeThread),
-            reinterpret_cast<void*>(i),
+            reinterpret_cast<void*>(&i),
             CREATE_SUSPENDED,
             nullptr);
 
@@ -367,27 +367,27 @@ void CreateComputeCommandList() {
     }
 }
 
-DWORD ComputeThread(int threadIndex) {
-
+DWORD ComputeThread(int* threadIndex) {
+    int thIdx = (*threadIndex);
     while (0 == InterlockedCompareExchange(&terminating, 0, 0)) {
-        UpdateComputePipeline(threadIndex);
+        UpdateComputePipeline(thIdx);
 
-        computeCommandList[threadIndex]->Close();
-        ID3D12CommandList* ppCommandLists[] = { computeCommandList[threadIndex] };
+        computeCommandList[thIdx]->Close();
+        ID3D12CommandList* ppCommandLists[] = { computeCommandList[thIdx] };
 
-        computeCommandQueue[threadIndex]->ExecuteCommandLists(1, ppCommandLists);
+        computeCommandQueue[thIdx]->ExecuteCommandLists(1, ppCommandLists);
 
         // Wait for the compute shader to complete the simulation.
-        UINT64 threadFenceValue = InterlockedIncrement(&computeFenceValue[threadIndex]);
-        computeCommandQueue[threadIndex]->Signal(computeFence[threadIndex], threadFenceValue);
-        computeFence[threadIndex]->SetEventOnCompletion(threadFenceValue, computeFenceEvent[threadIndex]);
-        WaitForSingleObject(computeFenceEvent[threadIndex], INFINITE);
+        UINT64 threadFenceValue = InterlockedIncrement(&computeFenceValue[thIdx]);
+        computeCommandQueue[thIdx]->Signal(computeFence[thIdx], threadFenceValue);
+        computeFence[thIdx]->SetEventOnCompletion(threadFenceValue, computeFenceEvent[thIdx]);
+        WaitForSingleObject(computeFenceEvent[thIdx], INFINITE);
 
         // Swap the indices to the SRV and UAV.
-        srvIndex[threadIndex] = 1 - srvIndex[threadIndex];
+        srvIndex[thIdx] = 1 - srvIndex[thIdx];
 
-        computeCommandAllocator[threadIndex]->Reset();
-        computeCommandList[threadIndex]->Reset(computeCommandAllocator[threadIndex], computeStateObject);
+        computeCommandAllocator[thIdx]->Reset();
+        computeCommandList[thIdx]->Reset(computeCommandAllocator[thIdx], computeStateObject);
     }
 
     return 0;
@@ -400,9 +400,9 @@ void CreateComputeBuffer() {
 
     srand(0);
     for (UINT i = 0; i < particleCount; i++) {
-        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 1000;
-        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 1000;
-        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 1000;
+        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 5000;
+        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 5000;
+        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 5000;
     }
 
     for (UINT i = 0; i < threadCount; i++) {
@@ -1038,7 +1038,7 @@ bool InitWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fu
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
 
-    case WM_KEYDOWN:
+    case WM_KEYUP:
         if (wParam == VK_ESCAPE) {
             DestroyWindow(hwnd);
         }

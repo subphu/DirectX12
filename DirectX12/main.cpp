@@ -35,15 +35,16 @@ void Update() {
 
     XMMATRIX model = XMMatrixIdentity();
     XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(angle));
-    XMMATRIX translation = XMMatrixTranslation(0.0f, 0.0f, 0.0f);
+    XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(angle+45));
+    XMMATRIX translation = XMMatrixTranslation(-1.0f, 0.0f, 0.0f);
+    XMMATRIX scale = XMMatrixScaling(0.05, 0.05, 0.05);
 
-    constantBuffer.model = model * rotation * translation;
-    constantBuffer.view = camView;
-    constantBuffer.projection = camProjection;
+    cbData.model = model * rotation * translation * scale;
+    cbData.view = camView;
+    cbData.projection = camProjection;
 
-    memcpy(constantBufferGPUAddress[frameIndex], &constantBuffer, sizeof(constantBuffer));
-
+    UINT8* destination = constantBufferData + sizeof(ConstantBuffer) * frameIndex;
+    memcpy(destination, &cbData, sizeof(ConstantBuffer));
 }
 
 void InitCamera() {
@@ -64,13 +65,14 @@ void InitCamera() {
 void UpdatePipeline() {
     HRESULT hr;
 
-    WaitForPreviousFrame();
-
     commandAllocator[frameIndex]->Reset();
     commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
     
     commandList->SetPipelineState(pipelineStateObject);
     commandList->SetGraphicsRootSignature(rootSignature);
+    
+    commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, constantBuffer->GetGPUVirtualAddress());
+    //commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, constantBuffer->GetGPUVirtualAddress() + frameIndex * sizeof(ConstantBuffer));
 
 
     D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
@@ -96,8 +98,6 @@ void UpdatePipeline() {
     commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     // draw triangle
-    commandList->SetGraphicsRootSignature(rootSignature); 
-
 
     commandList->RSSetViewports(1, &viewport);
     commandList->RSSetScissorRects(1, &scissorRect); 
@@ -106,20 +106,18 @@ void UpdatePipeline() {
     commandList->IASetIndexBuffer(&indexBufferView);
 
 
-    //ID3D12DescriptorHeap* ppHeaps[] = { srvUavDescriptorHeap };
-    //commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-    //const UINT srvIdx = (srvIndex[0] == 0 ? SrvParticle0 : SrvParticle1);
-    //D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = srvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
-    //srvHandle.ptr += size_t(srvIdx) * size_t(srvUavDescriptorSize);
-    //commandList->SetGraphicsRootDescriptorTable(GraphicsRootSRVTable, srvHandle);
+    ID3D12DescriptorHeap* ppHeaps[] = { srvUavDescriptorHeap };
+    commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    ID3D12DescriptorHeap* descriptorHeaps[] = { mainDescriptorHeap[frameIndex] };
-    commandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-    commandList->SetGraphicsRootDescriptorTable(0, mainDescriptorHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart());
+    for (UINT i = 0; i < threadCount; i++) {
+        const UINT srvIdx = i + (srvIndex[i] == 0 ? UINT(SrvParticle0) : UINT(SrvParticle1));
 
+        D3D12_GPU_DESCRIPTOR_HANDLE srvHandle = srvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+        srvHandle.ptr += size_t(srvIdx) * size_t(srvUavDescriptorSize);
+        commandList->SetGraphicsRootDescriptorTable(GraphicsRootSRVTable, srvHandle);
 
-
-    commandList->DrawIndexedInstanced(36, 1, 0, 0, 0); 
+        commandList->DrawIndexedInstanced(36, particleCount, 0, 0, 0);
+    }
 
     D3D12_RESOURCE_BARRIER resourceBarrierToPresent = {};
     resourceBarrierToPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -168,8 +166,9 @@ void UpdateComputePipeline(UINT threadIndex) {
     srvHandle.ptr += (size_t(srvIdx) + threadIndex) * size_t(srvUavDescriptorSize);
 
     D3D12_GPU_DESCRIPTOR_HANDLE uavHandle = srvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
-    srvHandle.ptr += (size_t(uavIdx) + threadIndex) * size_t(srvUavDescriptorSize);
+    uavHandle.ptr += (size_t(uavIdx) + threadIndex) * size_t(srvUavDescriptorSize);
 
+    computeCommandList[threadIndex]->SetComputeRootConstantBufferView(ComputeRootCBV, constantBufferCS->GetGPUVirtualAddress());
     computeCommandList[threadIndex]->SetComputeRootDescriptorTable(ComputeRootSRVTable, srvHandle);
     computeCommandList[threadIndex]->SetComputeRootDescriptorTable(ComputeRootUAVTable, uavHandle);
 
@@ -186,12 +185,9 @@ void UpdateComputePipeline(UINT threadIndex) {
 }
 
 void Render() {
+    WaitForPreviousFrame();
+
     HRESULT hr;
-    //UpdateComputePipeline();
-    //ID3D12CommandList* ppComputeCommandLists[] = { computeCommandList[frameIndex] };
-
-    //computeCommandQueue->ExecuteCommandLists(_countof(ppComputeCommandLists), ppComputeCommandLists);
-
 
     UpdatePipeline();
      
@@ -241,11 +237,17 @@ void mainloop() {
 
 void Cleanup() {
     InterlockedExchange(&terminating, 1);
+    WaitForMultipleObjects(threadCount, threadHandles, TRUE, INFINITE);
 
     for (int i = 0; i < frameBufferCount; ++i) {
         frameIndex = i;
         WaitForPreviousFrame();
-    } 
+    }
+
+    for (int n = 0; n < threadCount; n++) {
+        CloseHandle(threadHandles[n]);
+        CloseHandle(computeFenceEvent[n]);
+    }
 
     for (int i = 0; i < threadCount; ++i) {
         SAFE_RELEASE(particleBuffer0[i]);
@@ -255,15 +257,19 @@ void Cleanup() {
     SAFE_RELEASE(depthStencilBuffer);
     SAFE_RELEASE(dsDescriptorHeap);
 
+    for (int i = 0; i < threadCount; ++i) {
+        SAFE_RELEASE(computeCommandAllocator[i]);
+        SAFE_RELEASE(computeCommandQueue[i]);
+        SAFE_RELEASE(computeCommandList[i]);
+    };
+
     for (int i = 0; i < frameBufferCount; ++i) {
         SAFE_RELEASE(renderTargets[i]);
         SAFE_RELEASE(commandAllocator[i]);
         SAFE_RELEASE(fence[i]);
-
-        SAFE_RELEASE(mainDescriptorHeap[i]);
-        SAFE_RELEASE(constantBufferUploadHeap[i]);
     };
 
+    SAFE_RELEASE(constantBuffer);
     SAFE_RELEASE(vertexBuffer);
     SAFE_RELEASE(indexBuffer);
 
@@ -342,33 +348,30 @@ void CreateComputeCommandList() {
 
         device->CreateCommandQueue(&cqDesc, IID_PPV_ARGS(&computeCommandQueue[i]));
         device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&computeCommandAllocator[i]));
-        HRESULT hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[i], NULL, IID_PPV_ARGS(&computeCommandList[i]));
+        device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[i], nullptr, IID_PPV_ARGS(&computeCommandList[i]));
         device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&computeFence[i]));
 
 
         computeFenceEvent[i] = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         threadHandles[i] = CreateThread(
             nullptr, 0,
-            reinterpret_cast<LPTHREAD_START_ROUTINE>(ThreadProc),
-            reinterpret_cast<void*>(&i),
+            reinterpret_cast<LPTHREAD_START_ROUTINE>(ComputeThread),
+            reinterpret_cast<void*>(i),
             CREATE_SUSPENDED,
             nullptr);
-        ResumeThread(threadHandles[i]);
+
+        if (threadHandles[i]) {
+            ResumeThread(threadHandles[i]);
+        }
+
     }
 }
 
 DWORD ComputeThread(int threadIndex) {
 
-    std::wstringstream ss;
-    ss << threadIndex << "\n";
-    OutputDebugString(ss.str().c_str());
-
     while (0 == InterlockedCompareExchange(&terminating, 0, 0)) {
-        // Run the particle simulation.
-        //Simulate(threadIndex);
         UpdateComputePipeline(threadIndex);
 
-        // Close and execute the command list.
         computeCommandList[threadIndex]->Close();
         ID3D12CommandList* ppCommandLists[] = { computeCommandList[threadIndex] };
 
@@ -380,18 +383,9 @@ DWORD ComputeThread(int threadIndex) {
         computeFence[threadIndex]->SetEventOnCompletion(threadFenceValue, computeFenceEvent[threadIndex]);
         WaitForSingleObject(computeFenceEvent[threadIndex], INFINITE);
 
-        // Wait for the render thread to be done with the SRV so that the next frame in the simulation can run.
-        //WaitForPreviousFrame();
-        //UINT64 renderContextFenceValue = InterlockedCompareExchange(&fenceValue[threadIndex], 0, 0);
-        //if (fence[threadIndex]->GetCompletedValue() < renderContextFenceValue) {
-        //    computeCommandQueue[threadIndex]->Wait(fence[threadIndex], renderContextFenceValue);
-        //    InterlockedExchange(&fenceValue[threadIndex], 0);
-        //}
-
         // Swap the indices to the SRV and UAV.
         srvIndex[threadIndex] = 1 - srvIndex[threadIndex];
 
-        // Prepare for the next frame.
         computeCommandAllocator[threadIndex]->Reset();
         computeCommandList[threadIndex]->Reset(computeCommandAllocator[threadIndex], computeStateObject);
     }
@@ -400,15 +394,15 @@ DWORD ComputeThread(int threadIndex) {
 }
 
 void CreateComputeBuffer() {
-    std::vector<XMFLOAT4> data;
+    std::vector<Particle> data;
     data.resize(particleCount);
-    const UINT dataSize = particleCount * sizeof(XMFLOAT4);
+    const UINT dataSize = particleCount * sizeof(Particle);
 
     srand(0);
     for (UINT i = 0; i < particleCount; i++) {
-        data[i].x = static_cast<float>((rand() % 10000) - 5000) / 2000;
-        data[i].y = static_cast<float>(rand() % 10000) / 2000;
-        data[i].z = static_cast<float>((rand() % 10000) - 5000) / 2000;
+        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 1000;
+        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 1000;
+        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 1000;
     }
 
     for (UINT i = 0; i < threadCount; i++) {
@@ -423,7 +417,7 @@ void CreateComputeBuffer() {
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         srvDesc.Buffer.FirstElement = 0;
         srvDesc.Buffer.NumElements = particleCount;
-        srvDesc.Buffer.StructureByteStride = sizeof(XMFLOAT4);
+        srvDesc.Buffer.StructureByteStride = sizeof(Particle);
         srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 
         D3D12_CPU_DESCRIPTOR_HANDLE srvHandle0 = srvUavDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
@@ -438,7 +432,7 @@ void CreateComputeBuffer() {
         uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
         uavDesc.Buffer.FirstElement = 0;
         uavDesc.Buffer.NumElements = particleCount;
-        uavDesc.Buffer.StructureByteStride = sizeof(XMFLOAT4);
+        uavDesc.Buffer.StructureByteStride = sizeof(Particle);
         uavDesc.Buffer.CounterOffsetInBytes = 0;
         uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
 
@@ -462,30 +456,33 @@ void CreateComputeDescriptorHeap() {
 }
 
 void CreateComputeRootSignature() {
-    D3D12_DESCRIPTOR_RANGE  descriptorTableRanges[2];
+    D3D12_DESCRIPTOR_RANGE1  descriptorTableRanges[2];
     descriptorTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     descriptorTableRanges[0].NumDescriptors = 1;
     descriptorTableRanges[0].BaseShaderRegister = 0;
     descriptorTableRanges[0].RegisterSpace = 0;
     descriptorTableRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorTableRanges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
 
     descriptorTableRanges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
     descriptorTableRanges[1].NumDescriptors = 1;
     descriptorTableRanges[1].BaseShaderRegister = 0;
     descriptorTableRanges[1].RegisterSpace = 0;
     descriptorTableRanges[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorTableRanges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE;
 
 
-    D3D12_ROOT_DESCRIPTOR_TABLE descriptorTables[2];
+    D3D12_ROOT_DESCRIPTOR_TABLE1 descriptorTables[2];
     descriptorTables[0].NumDescriptorRanges = 1;
     descriptorTables[0].pDescriptorRanges = &descriptorTableRanges[0];
     descriptorTables[1].NumDescriptorRanges = 1;
     descriptorTables[1].pDescriptorRanges = &descriptorTableRanges[1];
 
-    D3D12_ROOT_PARAMETER rootParameters[ComputeRootParametersCount];
-    D3D12_ROOT_DESCRIPTOR rootDesc;
+    D3D12_ROOT_PARAMETER1 rootParameters[ComputeRootParametersCount];
+    D3D12_ROOT_DESCRIPTOR1 rootDesc;
     rootDesc.ShaderRegister = 0;
     rootDesc.RegisterSpace = 0;
+    rootDesc.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
     rootParameters[ComputeRootCBV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     rootParameters[ComputeRootCBV].Descriptor = rootDesc;
@@ -499,18 +496,18 @@ void CreateComputeRootSignature() {
     rootParameters[ComputeRootUAVTable].DescriptorTable = descriptorTables[1];
     rootParameters[ComputeRootUAVTable].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-    rootSignatureDesc.NumParameters = _countof(rootParameters);
-    rootSignatureDesc.pParameters = rootParameters;
-    rootSignatureDesc.NumStaticSamplers = 0;
-    rootSignatureDesc.pStaticSamplers = nullptr;
-    rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    rootSignatureDesc.Desc_1_1.NumParameters = _countof(rootParameters);
+    rootSignatureDesc.Desc_1_1.pParameters = rootParameters;
+    rootSignatureDesc.Desc_1_1.NumStaticSamplers = 0;
+    rootSignatureDesc.Desc_1_1.pStaticSamplers = nullptr;
+    rootSignatureDesc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
 
     ID3DBlob* signature;
-    D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+    D3D12SerializeVersionedRootSignature(&rootSignatureDesc, &signature, nullptr);
 
     device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature));
-
 }
 
 HRESULT CreateComputePipelineStateObj() {
@@ -801,31 +798,41 @@ HRESULT CreateGraphicsPipelineStateObj() {
 
     // create root signature
 
-    D3D12_DESCRIPTOR_RANGE  descriptorTableRanges[1];
-    descriptorTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+    D3D12_DESCRIPTOR_RANGE1 descriptorTableRanges[1];
+    descriptorTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     descriptorTableRanges[0].NumDescriptors = 1;
     descriptorTableRanges[0].BaseShaderRegister = 0;
     descriptorTableRanges[0].RegisterSpace = 0;
     descriptorTableRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    descriptorTableRanges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC;
 
-    D3D12_ROOT_DESCRIPTOR_TABLE descriptorTable;
+    D3D12_ROOT_DESCRIPTOR_TABLE1 descriptorTable;
     descriptorTable.NumDescriptorRanges = _countof(descriptorTableRanges);
     descriptorTable.pDescriptorRanges = &descriptorTableRanges[0];
 
-    D3D12_ROOT_PARAMETER  rootParameters[1];
-    rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    rootParameters[0].DescriptorTable = descriptorTable;
-    rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    D3D12_ROOT_DESCRIPTOR1 rootDesc;
+    rootDesc.ShaderRegister = 0;
+    rootDesc.RegisterSpace = 0;
+    rootDesc.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
 
-    D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-    rootSignatureDesc.NumParameters = _countof(rootParameters);
-    rootSignatureDesc.pParameters = rootParameters;
-    rootSignatureDesc.NumStaticSamplers = 0;
-    rootSignatureDesc.pStaticSamplers = nullptr;
-    rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    D3D12_ROOT_PARAMETER1 rootParameters[GraphicsRootParametersCount];
+    rootParameters[GraphicsRootCBV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    rootParameters[GraphicsRootCBV].Descriptor = rootDesc;
+    rootParameters[GraphicsRootCBV].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[GraphicsRootSRVTable].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameters[GraphicsRootSRVTable].DescriptorTable = descriptorTable;
+    rootParameters[GraphicsRootSRVTable].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
+    D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+    rootSignatureDesc.Desc_1_1.NumParameters = _countof(rootParameters);
+    rootSignatureDesc.Desc_1_1.pParameters = rootParameters;
+    rootSignatureDesc.Desc_1_1.NumStaticSamplers = 0;
+    rootSignatureDesc.Desc_1_1.pStaticSamplers = nullptr;
+    rootSignatureDesc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
     ID3DBlob* signature;
-    D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+    D3D12SerializeVersionedRootSignature(&rootSignatureDesc, &signature, nullptr);
 
     device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
 
@@ -920,64 +927,51 @@ void InitViewport() {
 }
 
 void CreateConstantBuffer() {
-    // Create a constant buffer descriptor heap for each frame
-    for (int i = 0; i < frameBufferCount; ++i) {
-        D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-        heapDesc.NumDescriptors = 1;
-        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mainDescriptorHeap[i]));
-    }
 
-    // create a resource heap, descriptor heap, and pointer to cbv for each frame
-    for (int i = 0; i < frameBufferCount; ++i) {
-        D3D12_RESOURCE_DESC resourceDesc = {};
-        resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        resourceDesc.Alignment = 0;
-        resourceDesc.Width = 1024 * 64;
-        resourceDesc.Height = 1;
-        resourceDesc.DepthOrArraySize = 1;
-        resourceDesc.MipLevels = 1;
-        resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
-        resourceDesc.SampleDesc.Count = 1;
-        resourceDesc.SampleDesc.Quality = 0;
-        resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-        D3D12_HEAP_PROPERTIES heapProperties = {};
-        heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
-        heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-        heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-        heapProperties.CreationNodeMask = 1;
-        heapProperties.VisibleNodeMask = 1;
+    const UINT bufferSize = sizeof(ConstantBuffer);
+    CreateBufferTransition(bufferSize, &constantBufferCS, reinterpret_cast<BYTE*>(&cbData));
 
-        device->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&constantBufferUploadHeap[i]));
-        constantBufferUploadHeap[i]->SetName(L"Constant Buffer Upload Resource Heap");
 
-        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = constantBufferUploadHeap[i]->GetGPUVirtualAddress();
-        cbvDesc.SizeInBytes = (sizeof(ConstantBuffer) + 255) & ~255;
-        device->CreateConstantBufferView(&cbvDesc, mainDescriptorHeap[i]->GetCPUDescriptorHandleForHeapStart());
+    const UINT constantBufferSize = sizeof(ConstantBuffer) * frameBufferCount;
 
-        ZeroMemory(&constantBuffer, sizeof(constantBuffer));
+    D3D12_RESOURCE_DESC resourceDesc = {};
+    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    resourceDesc.Alignment = 0;
+    resourceDesc.Width = constantBufferSize;
+    resourceDesc.Height = 1;
+    resourceDesc.DepthOrArraySize = 1;
+    resourceDesc.MipLevels = 1;
+    resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+    resourceDesc.SampleDesc.Count = 1;
+    resourceDesc.SampleDesc.Quality = 0;
+    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
-        D3D12_RANGE readRange = { 0, 0 };
-        constantBufferUploadHeap[i]->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferGPUAddress[i]));
-        memcpy(constantBufferGPUAddress[i], &constantBuffer, sizeof(constantBuffer));
-    }
+    D3D12_HEAP_PROPERTIES heapProperties = {};
+    heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+    heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapProperties.CreationNodeMask = 1;
+    heapProperties.VisibleNodeMask = 1;
+
+    device->CreateCommittedResource(
+        &heapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&constantBuffer));
+
+    constantBuffer->SetName(L"Constant Buffer Upload Resource Heap");
+
+    D3D12_RANGE readRange = { 0, 0 };
+    constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&constantBufferData));
+    ZeroMemory(constantBufferData, constantBufferSize);
 }
 
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowCmd) {
 
-    std::wstringstream ss;
-    ss << "Hello world";
-    OutputDebugString(ss.str().c_str());
 
     if (!InitWindow(hInstance, nShowCmd, Width, Height, FullScreen)) {
         MessageBox(0, L"Window Initialization - Failed", L"Error", MB_OK);

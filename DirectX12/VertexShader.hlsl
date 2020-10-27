@@ -1,3 +1,13 @@
+struct Particle {
+    float4 pos;
+};
+
+struct vs_in {
+    float4 pos : POSITION;
+    float4 color : COLOR;
+    uint id : SV_InstanceID;
+};
+
 struct vs_out {
     float4 position : SV_POSITION;
     float4 color : COLOR;
@@ -9,13 +19,13 @@ cbuffer ConstantBuffer : register(b0) {
     float4x4 projection;
 };
 
-StructuredBuffer<float4> g_bufPos;
+StructuredBuffer<Particle> g_bufPos;
 
-vs_out main( float4 pos : POSITION, float4 color : COLOR) {
+vs_out main(vs_in input) {
     vs_out output;
 
-    output.position = mul(mul(mul(projection, view), model), pos);
-    output.color = color;
+    output.position = mul(mul(projection, view), mul(model, input.pos) + g_bufPos[input.id].pos);
+    output.color = input.color * 0.1;
 
 	return output;
 }

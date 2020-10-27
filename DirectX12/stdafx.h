@@ -26,6 +26,10 @@
 
 using namespace DirectX;
 
+struct Particle {
+    XMFLOAT4 pos;
+};
+
 struct Vertex {
     XMFLOAT3 pos;
     XMFLOAT4 color;
@@ -46,6 +50,8 @@ int Height = 600;
 bool FullScreen = false;
 bool Running = true;
 
+int particleCount = 10000;
+
 float angle = 0.f;
 float yaw = 0.f;
 float pitch = 0.f;
@@ -63,7 +69,7 @@ XMVECTOR camUp;
 XMVECTOR camFront;
 XMVECTOR camRight;
 
-ConstantBuffer constantBuffer;
+ConstantBuffer cbData;
 
 // Direct3D
 const int frameBufferCount = 2;
@@ -94,9 +100,12 @@ D3D12_INDEX_BUFFER_VIEW indexBufferView;
 ID3D12Resource* depthStencilBuffer; 
 ID3D12DescriptorHeap* dsDescriptorHeap;
 
-ID3D12DescriptorHeap* mainDescriptorHeap[frameBufferCount]; // this heap will store the descripor to our constant buffer
-ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memory on the gpu where our constant buffer will be placed.
-UINT8* constantBufferGPUAddress[frameBufferCount];
+//ID3D12DescriptorHeap* mainDescriptorHeap[frameBufferCount]; // this heap will store the descripor to our constant buffer
+//ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memory on the gpu where our constant buffer will be placed.
+//UINT8* constantBufferGPUAddress[frameBufferCount];
+ID3D12Resource* constantBuffer;
+ID3D12Resource* constantBufferCS;
+UINT8* constantBufferData;
 
 
 void mainloop();
@@ -132,7 +141,9 @@ ID3D12RootSignature* computeRootSignature;
 ID3D12DescriptorHeap* srvUavDescriptorHeap;
 ID3D12Resource* particleBuffer0[threadCount];
 ID3D12Resource* particleBuffer1[threadCount];
-std::vector<XMFLOAT4> particles;
+ID3D12Resource* particleBuffer0Upload[threadCount];
+ID3D12Resource* particleBuffer1Upload[threadCount];
+std::vector<Particle> particles;
 
 UINT srvIndex[threadCount]; // Denotes which of the particle buffer resource views is the SRV (0 or 1). The UAV is 1 - srvIndex.
 UINT srvUavDescriptorSize;
@@ -147,8 +158,6 @@ UINT64 computeFenceValue[threadCount];
 
 HANDLE threadHandles[threadCount];
 LONG volatile terminating;
-
-int particleCount = 10000;
 
 void CreateComputeDescriptorHeap();
 void CreateComputeRootSignature();
@@ -181,11 +190,6 @@ enum DescriptorHeapIndex : UINT32 {
     SrvParticle1 = SrvParticle0 + threadCount,
     DescriptorCount = SrvParticle1 + threadCount
 };
-
-
-static DWORD WINAPI ThreadProc(int* threadIndex) {
-    return ComputeThread(*threadIndex);
-}
 
 
 DWORD iList[] = {

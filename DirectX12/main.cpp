@@ -82,11 +82,12 @@ void Update() {
     XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(angle+45));
     XMMATRIX translation = XMMatrixTranslation(-1.0f, 0.0f, 0.0f);
-    XMMATRIX scale = XMMatrixScaling(0.05f, 0.05f, 0.05f);
+    XMMATRIX scale = XMMatrixScaling(0.02f, 0.02f, 0.02f);
 
     cbData.model = model * rotation * translation * scale;
     cbData.view = camView;
     cbData.projection = camProjection;
+    cbData.time = 1;
 
     UINT8* destination = constantBufferData + sizeof(ConstantBuffer) * frameIndex;
     memcpy(destination, &cbData, sizeof(ConstantBuffer));
@@ -137,7 +138,7 @@ void UpdatePipeline() {
 
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
-    const float clearColor[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+    const float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
     commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
@@ -213,7 +214,7 @@ void UpdateComputePipeline(UINT threadIndex) {
     D3D12_GPU_DESCRIPTOR_HANDLE uavHandle = srvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
     uavHandle.ptr += (size_t(uavIdx) + threadIndex) * size_t(srvUavDescriptorSize);
 
-    computeCommandList[threadIndex]->SetComputeRootConstantBufferView(ComputeRootCBV, constantBufferCS->GetGPUVirtualAddress());
+    computeCommandList[threadIndex]->SetComputeRootConstantBufferView(ComputeRootCBV, constantBuffer->GetGPUVirtualAddress());
     computeCommandList[threadIndex]->SetComputeRootDescriptorTable(ComputeRootSRVTable, srvHandle);
     computeCommandList[threadIndex]->SetComputeRootDescriptorTable(ComputeRootUAVTable, uavHandle);
 
@@ -442,9 +443,9 @@ void CreateComputeBuffer() {
 
     srand(0);
     for (UINT i = 0; i < particleCount; i++) {
-        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 5000;
-        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 5000;
-        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 5000;
+        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 500;
+        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 500;
+        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 500;
     }
 
     for (UINT i = 0; i < threadCount; i++) {
@@ -971,8 +972,6 @@ void InitViewport() {
 void CreateConstantBuffer() {
 
 
-    const UINT bufferSize = sizeof(ConstantBuffer);
-    CreateBufferTransition(bufferSize, &constantBufferCS, reinterpret_cast<BYTE*>(&cbData));
 
 
     const UINT constantBufferSize = sizeof(ConstantBuffer) * frameBufferCount;

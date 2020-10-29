@@ -40,6 +40,7 @@ struct ConstantBuffer {
     XMMATRIX model;
     XMMATRIX view;
     XMMATRIX projection;
+    UINT time;
 };
 
 struct ThreadData {
@@ -57,7 +58,7 @@ int Height = 600;
 bool FullScreen = false;
 bool Running = true;
 
-UINT particleCount = 10000;
+UINT particleCount = 100000;
 
 float angle = 0.f;
 float yaw = 0.f;
@@ -108,11 +109,7 @@ D3D12_INDEX_BUFFER_VIEW indexBufferView;
 ID3D12Resource* depthStencilBuffer; 
 ID3D12DescriptorHeap* dsDescriptorHeap;
 
-//ID3D12DescriptorHeap* mainDescriptorHeap[frameBufferCount]; // this heap will store the descripor to our constant buffer
-//ID3D12Resource* constantBufferUploadHeap[frameBufferCount]; // this is the memory on the gpu where our constant buffer will be placed.
-//UINT8* constantBufferGPUAddress[frameBufferCount];
 ID3D12Resource* constantBuffer;
-ID3D12Resource* constantBufferCS;
 UINT8* constantBufferData;
 
 

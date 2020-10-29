@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sstream>   
 #include <vector>
+#include <chrono>
 
 
 #define SAFE_RELEASE(p) { if ( (p) ) { (p)->Release(); (p) = 0; } }
@@ -40,7 +41,7 @@ struct ConstantBuffer {
     XMMATRIX model;
     XMMATRIX view;
     XMMATRIX projection;
-    UINT time;
+    float time;
 };
 
 struct ThreadData {
@@ -59,6 +60,9 @@ bool FullScreen = false;
 bool Running = true;
 
 UINT particleCount = 100000;
+
+std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
 float angle = 0.f;
 float yaw = 0.f;

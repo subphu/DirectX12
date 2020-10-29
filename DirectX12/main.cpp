@@ -443,9 +443,9 @@ void CreateComputeBuffer() {
 
     srand(0);
     for (UINT i = 0; i < particleCount; i++) {
-        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 500;
-        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 500;
-        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 500;
+        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 2000;
+        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 2000;
+        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 2000;
     }
 
     for (UINT i = 0; i < threadCount; i++) {
@@ -890,12 +890,12 @@ HRESULT CreateGraphicsPipelineStateObj() {
     inputLayoutDesc.pInputElementDescs = inputLayout;
 
     D3D12_RENDER_TARGET_BLEND_DESC renderTargetBlendDesc = {};
-    renderTargetBlendDesc.BlendEnable = FALSE;
+    renderTargetBlendDesc.BlendEnable = TRUE;
     renderTargetBlendDesc.LogicOpEnable = FALSE;
-    renderTargetBlendDesc.SrcBlend = D3D12_BLEND_ONE;
-    renderTargetBlendDesc.DestBlend = D3D12_BLEND_ZERO;
+    renderTargetBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    renderTargetBlendDesc.DestBlend = D3D12_BLEND_ONE;
     renderTargetBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
-    renderTargetBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+    renderTargetBlendDesc.SrcBlendAlpha = D3D12_BLEND_ZERO;
     renderTargetBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
     renderTargetBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
     renderTargetBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;

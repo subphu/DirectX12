@@ -1,27 +1,18 @@
 #include "stdafx.h"
 
 void RestartComputeBuffer() {
-    if (prevSpaceKey || !spaceKey) {
-        return;
-    }
-    
-    for (int i = 0; i < frameBufferCount; i++) {
-        if (fence[i]->GetCompletedValue() < fenceValue[i]) {
-            fence[i]->SetEventOnCompletion(fenceValue[i], fenceEvent);
-            WaitForSingleObject(fenceEvent, INFINITE);
-        }
+    if (prevSpaceKey || !spaceKey) { return; }
+    if (fence[0]->GetCompletedValue() < fenceValue[0]) {
+        fence[0]->SetEventOnCompletion(fenceValue[0], fenceEvent);
+        WaitForSingleObject(fenceEvent, INFINITE);
     }
 
     for (int i = 0; i < threadCount; i++) {
-        if (computeFence[i]->GetCompletedValue() < computeFenceValue[i]) {
-            computeFence[i]->SetEventOnCompletion(computeFenceValue[i], computeFenceEvent);
-            WaitForSingleObject(fenceEvent, INFINITE);
-        }
         SuspendThread(threadHandles[i]);
     }
 
-    commandAllocator[frameIndex]->Reset();
-    commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
+    commandAllocator[0]->Reset();
+    commandList->Reset(commandAllocator[0], pipelineStateObject);
 
     CreateComputeBuffer();
 
@@ -30,8 +21,13 @@ void RestartComputeBuffer() {
 
     commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    fenceValue[frameIndex]++;
-    commandQueue->Signal(fence[frameIndex], fenceValue[frameIndex]);
+    fenceValue[0]++;
+    commandQueue->Signal(fence[0], fenceValue[0]);
+
+    if (fence[0]->GetCompletedValue() < fenceValue[0]) {
+        fence[0]->SetEventOnCompletion(fenceValue[0], fenceEvent);
+        WaitForSingleObject(fenceEvent, INFINITE);
+    }
     
     for (int i = 0; i < threadCount; i++) {
         ResumeThread(threadHandles[i]);
@@ -196,6 +192,9 @@ void UpdateComputePipeline(UINT threadIndex) {
         pUavResource = particleBuffer0[threadIndex];
     }
 
+    computeCommandList[threadIndex]->SetPipelineState(computeStateObject);
+    computeCommandList[threadIndex]->SetComputeRootSignature(computeRootSignature);
+
     D3D12_RESOURCE_BARRIER resourceBarrierToUAV = {};
     resourceBarrierToUAV.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     resourceBarrierToUAV.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -204,9 +203,6 @@ void UpdateComputePipeline(UINT threadIndex) {
     resourceBarrierToUAV.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     resourceBarrierToUAV.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     computeCommandList[threadIndex]->ResourceBarrier(1, &resourceBarrierToUAV);
-
-    computeCommandList[threadIndex]->SetPipelineState(computeStateObject);
-    computeCommandList[threadIndex]->SetComputeRootSignature(computeRootSignature);
 
     ID3D12DescriptorHeap* ppHeaps[] = { srvUavDescriptorHeap };
     computeCommandList[threadIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
@@ -223,14 +219,14 @@ void UpdateComputePipeline(UINT threadIndex) {
 
     computeCommandList[threadIndex]->Dispatch(static_cast<int>(ceil(particleCount / 128.0f)), 1, 1);
 
-    D3D12_RESOURCE_BARRIER resourceBarrierToResource = {};
-    resourceBarrierToResource.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    resourceBarrierToResource.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    resourceBarrierToResource.Transition.pResource = pUavResource;
-    resourceBarrierToResource.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    resourceBarrierToResource.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    resourceBarrierToResource.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    computeCommandList[threadIndex]->ResourceBarrier(1, &resourceBarrierToResource);
+    D3D12_RESOURCE_BARRIER resourceBarrierToSRV = {};
+    resourceBarrierToSRV.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrierToSRV.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrierToSRV.Transition.pResource = pUavResource;
+    resourceBarrierToSRV.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    resourceBarrierToSRV.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    resourceBarrierToSRV.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    computeCommandList[threadIndex]->ResourceBarrier(1, &resourceBarrierToSRV);
 
     computeCommandList[threadIndex]->Close();
 }
@@ -285,10 +281,6 @@ void Cleanup() {
     InterlockedExchange(&terminating, 1);
     WaitForMultipleObjects(threadCount, threadHandles, TRUE, INFINITE);
 
-    for (int i = 0; i < frameBufferCount; ++i) {
-        frameIndex = i;
-        WaitForPreviousFrame();
-    }
 
     for (int n = 0; n < threadCount; n++) {
         CloseHandle(threadHandles[n]);
@@ -414,29 +406,30 @@ void CreateComputeCommandList() {
     }
 }
 
-DWORD ComputeThread(ThreadData* pThData) {
-    int thIdx = pThData->idx;
+DWORD ComputeThread(ThreadData* pThreadData) {
+    int threadIndex = pThreadData->idx;
 
     while (0 == InterlockedCompareExchange(&terminating, 0, 0)) {
-        UpdateComputePipeline(thIdx);
+        // Swap the indices to the SRV and UAV.
+        srvIndex[threadIndex] = 1 - srvIndex[threadIndex];
 
-        ID3D12CommandList* ppCommandLists[] = { computeCommandList[thIdx] };
+        UpdateComputePipeline(threadIndex);
 
-        computeCommandQueue[thIdx]->ExecuteCommandLists(1, ppCommandLists);
+        ID3D12CommandList* ppCommandLists[] = { computeCommandList[threadIndex] };
+
+        computeCommandQueue[threadIndex]->ExecuteCommandLists(1, ppCommandLists);
 
         // Wait for the compute shader to complete the simulation.
-        computeFenceValue[thIdx]++;
-        computeCommandQueue[thIdx]->Signal(computeFence[thIdx], computeFenceValue[thIdx]);
-        if (computeFence[thIdx]->GetCompletedValue() < computeFenceValue[thIdx]) {
-            computeFence[thIdx]->SetEventOnCompletion(computeFenceValue[thIdx], computeFenceEvent[thIdx]);
-            WaitForSingleObject(computeFenceEvent[thIdx], INFINITE);
+        computeFenceValue[threadIndex]++;
+        computeCommandQueue[threadIndex]->Signal(computeFence[threadIndex], computeFenceValue[threadIndex]);
+        if (computeFence[threadIndex]->GetCompletedValue() < computeFenceValue[threadIndex]) {
+            computeFence[threadIndex]->SetEventOnCompletion(computeFenceValue[threadIndex], computeFenceEvent[threadIndex]);
+            WaitForSingleObject(computeFenceEvent[threadIndex], INFINITE);
         }
 
-        // Swap the indices to the SRV and UAV.
-        srvIndex[thIdx] = 1 - srvIndex[thIdx];
+        computeCommandAllocator[threadIndex]->Reset();
+        computeCommandList[threadIndex]->Reset(computeCommandAllocator[threadIndex], computeStateObject);
 
-        computeCommandAllocator[thIdx]->Reset();
-        computeCommandList[thIdx]->Reset(computeCommandAllocator[thIdx], computeStateObject);
     }
 
     return 0;

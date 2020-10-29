@@ -10,13 +10,21 @@ void RestartComputeBuffer() {
             fence[i]->SetEventOnCompletion(fenceValue[i], fenceEvent);
             WaitForSingleObject(fenceEvent, INFINITE);
         }
+    }
 
+    for (int i = 0; i < threadCount; i++) {
+        if (computeFence[i]->GetCompletedValue() < computeFenceValue[i]) {
+            computeFence[i]->SetEventOnCompletion(computeFenceValue[i], computeFenceEvent);
+            WaitForSingleObject(fenceEvent, INFINITE);
+        }
         SuspendThread(threadHandles[i]);
     }
 
     commandAllocator[frameIndex]->Reset();
     commandList->Reset(commandAllocator[frameIndex], pipelineStateObject);
+
     CreateComputeBuffer();
+
     commandList->Close();
     ID3D12CommandList* ppCommandLists[] = { commandList };
 
@@ -223,6 +231,8 @@ void UpdateComputePipeline(UINT threadIndex) {
     resourceBarrierToResource.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     resourceBarrierToResource.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     computeCommandList[threadIndex]->ResourceBarrier(1, &resourceBarrierToResource);
+
+    computeCommandList[threadIndex]->Close();
 }
 
 void Render() {
@@ -387,12 +397,13 @@ void CreateComputeCommandList() {
         device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, computeCommandAllocator[i], nullptr, IID_PPV_ARGS(&computeCommandList[i]));
         device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&computeFence[i]));
 
+        threadData[i].idx = i;
 
         computeFenceEvent[i] = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         threadHandles[i] = CreateThread(
             nullptr, 0,
             reinterpret_cast<LPTHREAD_START_ROUTINE>(ComputeThread),
-            reinterpret_cast<void*>(&i),
+            reinterpret_cast<void*>(&threadData),
             CREATE_SUSPENDED,
             nullptr);
 
@@ -403,12 +414,12 @@ void CreateComputeCommandList() {
     }
 }
 
-DWORD ComputeThread(int* threadIndex) {
-    int thIdx = (*threadIndex);
+DWORD ComputeThread(ThreadData* pThData) {
+    int thIdx = pThData->idx;
+
     while (0 == InterlockedCompareExchange(&terminating, 0, 0)) {
         UpdateComputePipeline(thIdx);
 
-        computeCommandList[thIdx]->Close();
         ID3D12CommandList* ppCommandLists[] = { computeCommandList[thIdx] };
 
         computeCommandQueue[thIdx]->ExecuteCommandLists(1, ppCommandLists);

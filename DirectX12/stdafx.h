@@ -42,6 +42,10 @@ struct ConstantBuffer {
     XMMATRIX projection;
 };
 
+struct ThreadData {
+    UINT idx;
+};
+
 HWND hwnd = NULL;
 LPCTSTR WindowName = L"DirectX12";
 LPCTSTR WindowTitle = L"DirectX12";
@@ -85,6 +89,7 @@ ID3D12Device* device;
 IDXGISwapChain3* swapChain;
 ID3D12DescriptorHeap* rtvDescriptorHeap;
 ID3D12Resource* renderTargets[frameBufferCount];
+
 ID3D12CommandQueue* commandQueue;
 ID3D12CommandAllocator* commandAllocator[frameBufferCount];
 ID3D12GraphicsCommandList* commandList;
@@ -146,8 +151,6 @@ ID3D12RootSignature* computeRootSignature;
 ID3D12DescriptorHeap* srvUavDescriptorHeap;
 ID3D12Resource* particleBuffer0[threadCount];
 ID3D12Resource* particleBuffer1[threadCount];
-ID3D12Resource* particleBuffer0Upload[threadCount];
-ID3D12Resource* particleBuffer1Upload[threadCount];
 std::vector<Particle> particles;
 
 UINT srvIndex[threadCount]; // Denotes which of the particle buffer resource views is the SRV (0 or 1). The UAV is 1 - srvIndex.
@@ -161,6 +164,7 @@ ID3D12Fence* computeFence[threadCount];
 HANDLE computeFenceEvent[threadCount];
 UINT64 computeFenceValue[threadCount];
 
+ThreadData threadData[threadCount];
 HANDLE threadHandles[threadCount];
 LONG volatile terminating;
 
@@ -171,7 +175,8 @@ void CreateComputeCommandList();
 void CreateComputeBuffer();
 void UpdateComputePipeline(UINT threadIndex);
 
-DWORD ComputeThread(int* threadIndex);
+DWORD ComputeThread(ThreadData* pThData);
+
 
 // Indices of the root signature parameters.
 enum GraphicsRootParameters : UINT32 {

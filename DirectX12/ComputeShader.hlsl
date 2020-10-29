@@ -5,6 +5,13 @@ struct Particle {
 	float4 pos;
 };
 
+cbuffer ConstantBuffer : register(b0) {
+	float4x4 model;
+	float4x4 view;
+	float4x4 projection;
+	float time;
+};
+
 StructuredBuffer<Particle> oldPos      : register(t0);    // SRV
 RWStructuredBuffer<Particle> newPos    : register(u0);    // UAV
 

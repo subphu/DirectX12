@@ -5,5 +5,5 @@ struct vs_out {
 };
 
 float4 main(vs_out input) : SV_TARGET {
-	return input.color;
+    return input.color;
 }

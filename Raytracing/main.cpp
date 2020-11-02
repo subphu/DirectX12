@@ -5,7 +5,7 @@ _Use_decl_annotations_
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 
 	InitWindow(hInstance, nCmdShow);
-	app = Raytracing(width, height, windowTitle);
+	app = Raytracing(hwnd, width, height, windowTitle);
 	app.Init();
 	WindowLoop();
 	app.Destroy();

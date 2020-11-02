@@ -84,10 +84,12 @@ void Update() {
     XMMATRIX translation = XMMatrixTranslation(-1.0f, 0.0f, 0.0f);
     XMMATRIX scale = XMMatrixScaling(0.02f, 0.02f, 0.02f);
 
+    end = std::chrono::steady_clock::now();
     cbData.model = model * rotation * translation * scale;
     cbData.view = camView;
     cbData.projection = camProjection;
-    cbData.time = 1;
+    cbData.time = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000.0f;
+    begin = std::chrono::steady_clock::now();
 
     UINT8* destination = constantBufferData + sizeof(ConstantBuffer) * frameIndex;
     memcpy(destination, &cbData, sizeof(ConstantBuffer));
@@ -443,9 +445,9 @@ void CreateComputeBuffer() {
 
     srand(0);
     for (UINT i = 0; i < particleCount; i++) {
-        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 2000;
-        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 2000;
-        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 2000;
+        data[i].pos.x = static_cast<float>((rand() % 10000) - 5000) / 500;
+        data[i].pos.y = static_cast<float>((rand() % 10000) - 5000) / 500;
+        data[i].pos.z = static_cast<float>((rand() % 10000) - 5000) / 500;
     }
 
     for (UINT i = 0; i < threadCount; i++) {

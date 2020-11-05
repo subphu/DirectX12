@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Windowsx.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
@@ -14,13 +15,15 @@
 #include <wrl/client.h>
 #include <shellapi.h>
 
+#include "Camera.h"
+
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
 
 class Raytracing {
 
 public:
-	Raytracing();
+	Raytracing() {}
 	Raytracing(HWND hwnd, UINT width, UINT height, std::wstring name);
 	~Raytracing();
 
@@ -30,6 +33,8 @@ public:
 
 	void KeyDown(UINT8 key);
 	void KeyUp(UINT8 key);
+	void MouseMove(UINT8 wParam, UINT32 lParam);
+	void MouseWheel(float wParam);
 
 private:
 
@@ -44,6 +49,9 @@ private:
 		XMMATRIX projection;
 	};
 
+	ConstantBuffer m_cbData;
+	XMFLOAT2 m_mouse = { 0.f, 0.f };
+
 	HWND m_hwnd;
 	UINT m_width;
 	UINT m_height;
@@ -52,6 +60,7 @@ private:
 
 	static const UINT FrameCount = 2;
 
+	Camera camera;
 
 	UINT m_frameIndex;
 	D3D12_VIEWPORT m_viewport;
@@ -134,14 +143,14 @@ private:
 
 
 	Vertex vertices[9] = {
-		{ { -0.5f, -0.5f, -0.5f + 1.0f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { -0.5f, +0.5f, -0.5f + 1.0f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { +0.5f, +0.5f, -0.5f + 1.0f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { +0.5f, -0.5f, -0.5f + 1.0f}, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.5f, -0.5f, +0.5f + 1.0f}, { 0.0f, 1.0f, 1.0f, 1.0f } },
-		{ { -0.5f, +0.5f, +0.5f + 1.0f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ { +0.5f, +0.5f, +0.5f + 1.0f}, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ { +0.5f, -0.5f, +0.5f + 1.0f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -0.5f, -0.5f, -0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -0.5f, +0.5f, -0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { +0.5f, +0.5f, -0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { +0.5f, -0.5f, -0.5f}, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.5f, -0.5f, +0.5f}, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -0.5f, +0.5f, +0.5f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { +0.5f, +0.5f, +0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ { +0.5f, -0.5f, +0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	};
 
 	enum GraphicsRootParameters : UINT32 {

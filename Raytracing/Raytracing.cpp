@@ -1,18 +1,12 @@
 #include "Raytracing.h"
 
-Raytracing::Raytracing() {
-	m_width = 900;
-	m_height = 600;
-	m_title = L"Raytracing";
-	m_aspectRatio = static_cast<float>(m_width) / static_cast<float>(m_height);
-}
-
 Raytracing::Raytracing(HWND hwnd, UINT width, UINT height, std::wstring name) {
     m_hwnd = hwnd;
 	m_width = width;
 	m_height = height;
 	m_title = name;
 	m_aspectRatio = static_cast<float>(m_width) / static_cast<float>(m_height);
+    camera = Camera(XMVectorSet(0.0f, 3.0f, 5.0f, 0.0f), m_aspectRatio);
 }
 
 Raytracing::~Raytracing() { }
@@ -24,6 +18,18 @@ void Raytracing::MainLoop() {
 }
 
 void Raytracing::Update() {
+    XMMATRIX model = XMMatrixIdentity();
+    XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(0));
+    XMMATRIX translation = XMMatrixTranslation(0.0f, 0.0f, 0.0f);
+    XMMATRIX scale = XMMatrixScaling(1.f, 1.f, 1.f);
+
+    m_cbData.model = model * rotation * translation * scale;
+    m_cbData.view = camera.GetView();
+    m_cbData.projection = camera.GetProjection();
+
+    UINT8* destination = m_constantBufferLoc + sizeof(ConstantBuffer) * m_frameIndex;
+    memcpy(destination, &m_cbData, sizeof(ConstantBuffer));
 }
 
 void Raytracing::Render() {
@@ -44,9 +50,8 @@ void Raytracing::UpdateRenderPipeline() {
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
-    //m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBuffer->GetGPUVirtualAddress());
-    //m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBuffer->GetGPUVirtualAddress() + m_frameIndex * sizeof(ConstantBuffer));
-
+    m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBuffer->GetGPUVirtualAddress());
+    
     D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
     resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     resourceBarrierToTarget.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -102,13 +107,29 @@ void Raytracing::ExecuteRenderCommand() {
     m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
 }
 
-void Raytracing::KeyDown(UINT8 key) {
-}
+void Raytracing::KeyDown(UINT8 key) { }
 
 void Raytracing::KeyUp(UINT8 key) {
     if (key == VK_ESCAPE) {
         PostQuitMessage(0);
     }
+}
+
+void Raytracing::MouseMove(UINT8 wParam, UINT32 lParam) {
+    bool lmb = wParam & MK_LBUTTON;
+    bool mmb = wParam & MK_MBUTTON;
+    bool rmb = wParam & MK_RBUTTON;
+    if (!lmb) return;
+
+    float x = float(GET_X_LPARAM(lParam));
+    float y = float(GET_Y_LPARAM(lParam));
+
+    camera.Move(x - m_mouse.x, y - m_mouse.y);
+    m_mouse = { x, y };
+}
+
+void Raytracing::MouseWheel(float wParam) {
+    camera.Zoom(GET_WHEEL_DELTA_WPARAM(wParam));
 }
 
 void Raytracing::Init() {

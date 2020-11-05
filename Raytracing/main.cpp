@@ -16,6 +16,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	switch (message) {
 
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_MOUSEWHEEL:
+		app.MouseWheel(static_cast<FLOAT>(wParam));
+		return 0;
+
+	case WM_MOUSEMOVE:
+		app.MouseMove(static_cast<UINT8>(wParam), static_cast<UINT32>(lParam));
+		return 0;
+
 	case WM_KEYDOWN:
 		app.KeyDown(static_cast<UINT8>(wParam));
 		return 0;

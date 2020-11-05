@@ -47,8 +47,8 @@ private:
 	HWND m_hwnd;
 	UINT m_width;
 	UINT m_height;
-	float m_aspectRatio;
 	std::wstring m_title;
+	float m_aspectRatio;
 
 	static const UINT FrameCount = 2;
 
@@ -88,9 +88,9 @@ private:
 	void Update();
 	void Render();
 
-	void UpdatePipeline();
-	void Render();
+	void UpdateRenderPipeline();
 	void WaitForPreviousFrame();
+	void ExecuteRenderCommand();
 
 	void CreateDevice(IDXGIFactory4* factory);
 	void CreateSwapChain(IDXGIFactory4* factory);
@@ -107,14 +107,14 @@ private:
 
 	HRESULT CompileShader(LPCWSTR filename, LPCSTR target, D3D12_SHADER_BYTECODE* byteCode);
 	void CreateBuffer(
-		ID3D12Resource* buffer, int bufferSize,
+		ID3D12Resource** buffer, int bufferSize,
 		D3D12_HEAP_TYPE heapType, 
 		D3D12_RESOURCE_STATES resourceStates,
 		D3D12_RESOURCE_FLAGS dstFlags = D3D12_RESOURCE_FLAG_NONE);
 
 	void BufferTransition(
-		ID3D12Resource* srcBuffer,
-		ID3D12Resource* dstBuffer,
+		ID3D12Resource** srcBuffer,
+		ID3D12Resource** dstBuffer,
 		int bufferSize, BYTE* data,
 		D3D12_RESOURCE_STATES dstStates = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
@@ -134,14 +134,14 @@ private:
 
 
 	Vertex vertices[9] = {
-		{ { -0.5f, -0.5f, -0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ { -0.5f, +0.5f, -0.5f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
-		{ { +0.5f, +0.5f, -0.5f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { +0.5f, -0.5f, -0.5f}, { 1.0f, 1.0f, 0.0f, 1.0f } },
-		{ { -0.5f, -0.5f, +0.5f}, { 0.0f, 1.0f, 1.0f, 1.0f } },
-		{ { -0.5f, +0.5f, +0.5f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
-		{ { +0.5f, +0.5f, +0.5f}, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ { +0.5f, -0.5f, +0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -0.5f, -0.5f, -0.5f + 1.0f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { -0.5f, +0.5f, -0.5f + 1.0f}, { 0.0f, 1.0f, 0.0f, 1.0f } },
+		{ { +0.5f, +0.5f, -0.5f + 1.0f}, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { +0.5f, -0.5f, -0.5f + 1.0f}, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.5f, -0.5f, +0.5f + 1.0f}, { 0.0f, 1.0f, 1.0f, 1.0f } },
+		{ { -0.5f, +0.5f, +0.5f + 1.0f}, { 1.0f, 1.0f, 1.0f, 1.0f } },
+		{ { +0.5f, +0.5f, +0.5f + 1.0f}, { 1.0f, 0.0f, 1.0f, 1.0f } },
+		{ { +0.5f, -0.5f, +0.5f + 1.0f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	};
 
 	enum GraphicsRootParameters : UINT32 {

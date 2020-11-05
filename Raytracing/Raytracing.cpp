@@ -15,10 +15,91 @@ Raytracing::Raytracing(HWND hwnd, UINT width, UINT height, std::wstring name) {
 	m_aspectRatio = static_cast<float>(m_width) / static_cast<float>(m_height);
 }
 
-Raytracing::~Raytracing() {
-}
+Raytracing::~Raytracing() { }
 
 void Raytracing::MainLoop() {
+    if (!m_fence) return;
+    Update();
+    Render();
+}
+
+void Raytracing::Update() {
+}
+
+void Raytracing::Render() {
+    WaitForPreviousFrame();
+
+    UpdateRenderPipeline();
+
+    ExecuteRenderCommand();
+
+    m_swapChain->Present(0, 0);
+}
+
+void Raytracing::UpdateRenderPipeline() {
+    m_commandAllocator->Reset();
+    m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get());
+
+    m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+    m_commandList->RSSetViewports(1, &m_viewport);
+    m_commandList->RSSetScissorRects(1, &m_scissorRect);
+
+    //m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBuffer->GetGPUVirtualAddress());
+    //m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBuffer->GetGPUVirtualAddress() + m_frameIndex * sizeof(ConstantBuffer));
+
+    D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
+    resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrierToTarget.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrierToTarget.Transition.pResource = m_renderTargets[m_frameIndex].Get();
+    resourceBarrierToTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    resourceBarrierToTarget.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    resourceBarrierToTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &resourceBarrierToTarget);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = m_depthStencilHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    rtvHandle.ptr += size_t(m_frameIndex) * size_t(m_rtvDescriptorSize);
+
+    m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+    const float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+    m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+    // draw triangle
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+    m_commandList->IASetIndexBuffer(&m_indexBufferView);
+
+    m_commandList->DrawIndexedInstanced(36, 1, 0, 0, 0);
+    
+    D3D12_RESOURCE_BARRIER resourceBarrierToPresent = {};
+    resourceBarrierToPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    resourceBarrierToPresent.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    resourceBarrierToPresent.Transition.pResource = m_renderTargets[m_frameIndex].Get();
+    resourceBarrierToPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    resourceBarrierToPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    resourceBarrierToPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &resourceBarrierToPresent);
+
+}
+
+void Raytracing::WaitForPreviousFrame() {
+    if (m_fence->GetCompletedValue() < m_fenceValue) {
+        m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent);
+        WaitForSingleObject(m_fenceEvent, INFINITE);
+    }
+
+    m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+}
+
+void Raytracing::ExecuteRenderCommand() {
+    m_commandList->Close();
+    ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+    m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    m_fenceValue++;
+    m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
 }
 
 void Raytracing::KeyDown(UINT8 key) {
@@ -30,12 +111,6 @@ void Raytracing::KeyUp(UINT8 key) {
     }
 }
 
-void Raytracing::Update() {
-}
-
-void Raytracing::Render() {
-}
-
 void Raytracing::Init() {
 	IDXGIFactory4* dxgiFactory;
 	CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
@@ -44,7 +119,9 @@ void Raytracing::Init() {
 	CreateSwapChain(dxgiFactory);
 	CreateRTV();
     CreateFence();
+    CreateRootSignature();
 	CreateGraphicsPSO();
+    CreateCommandList();
 
     CreateInputBuffer();
     CreateConstantBuffer();
@@ -52,12 +129,7 @@ void Raytracing::Init() {
 
     InitViewport();
 
-    m_commandList->Close();
-    ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-    m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-    m_fenceValue++;
-    m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
+    ExecuteRenderCommand();
 
 }
 
@@ -287,7 +359,7 @@ HRESULT Raytracing::CompileShader(LPCWSTR filename, LPCSTR target, D3D12_SHADER_
     return hr;
 }
 
-void Raytracing::CreateBuffer(ID3D12Resource* buffer, int bufferSize, D3D12_HEAP_TYPE heapType, D3D12_RESOURCE_STATES resourceStates, D3D12_RESOURCE_FLAGS dstFlags) {
+void Raytracing::CreateBuffer(ID3D12Resource** buffer, int bufferSize, D3D12_HEAP_TYPE heapType, D3D12_RESOURCE_STATES resourceStates, D3D12_RESOURCE_FLAGS dstFlags) {
     D3D12_RESOURCE_DESC resourceDescUpload = {};
     resourceDescUpload.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
     resourceDescUpload.Alignment = 0;
@@ -314,22 +386,22 @@ void Raytracing::CreateBuffer(ID3D12Resource* buffer, int bufferSize, D3D12_HEAP
         &resourceDescUpload,
         resourceStates,
         nullptr,
-        IID_PPV_ARGS(&buffer));
-    buffer->SetName(L"Buffer Upload Resource Heap");
+        IID_PPV_ARGS(buffer));
+    (*buffer)->SetName(L"Buffer Upload Resource Heap");
 }
 
-void Raytracing::BufferTransition(ID3D12Resource* srcBuffer, ID3D12Resource* dstBuffer, int bufferSize, BYTE* data, D3D12_RESOURCE_STATES dstStates) {
+void Raytracing::BufferTransition(ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, int bufferSize, BYTE* data, D3D12_RESOURCE_STATES dstStates) {
     BYTE* pData;
-    srcBuffer->Map(0, NULL, reinterpret_cast<void**>(&pData));
+    (*srcBuffer)->Map(0, NULL, reinterpret_cast<void**>(&pData));
     memcpy(pData, data, bufferSize);
-    srcBuffer->Unmap(0, NULL);
+    (*srcBuffer)->Unmap(0, NULL);
 
-    m_commandList->CopyBufferRegion(dstBuffer, 0, srcBuffer, 0, bufferSize);
+    m_commandList->CopyBufferRegion(*dstBuffer, 0, *srcBuffer, 0, bufferSize);
 
     D3D12_RESOURCE_BARRIER resourceBarrier = {};
     resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    resourceBarrier.Transition.pResource = dstBuffer;
+    resourceBarrier.Transition.pResource = *dstBuffer;
     resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     resourceBarrier.Transition.StateAfter = dstStates;
     resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -408,20 +480,22 @@ void Raytracing::CreateBufferTransition(int bufferSize, ID3D12Resource** dstBuff
 
 void Raytracing::CreateInputBuffer() {
     int vBufferSize = sizeof(vertices);
-    ComPtr<ID3D12Resource> srcVertexBuffer;
-    CreateBuffer(srcVertexBuffer.Get(), vBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
-    CreateBuffer(m_vertexBuffer.Get(), vBufferSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
-    BufferTransition(srcVertexBuffer.Get(), m_vertexBuffer.Get(), vBufferSize, reinterpret_cast<BYTE*>(vertices));
+    //ComPtr<ID3D12Resource> srcVertexBuffer;
+    //CreateBuffer(&srcVertexBuffer, vBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
+    //CreateBuffer(&m_vertexBuffer, vBufferSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+    //BufferTransition(&srcVertexBuffer, &m_vertexBuffer, vBufferSize, reinterpret_cast<BYTE*>(vertices));
+    CreateBufferTransition(vBufferSize, &m_vertexBuffer, reinterpret_cast<BYTE*>(vertices));
 
     m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
     m_vertexBufferView.StrideInBytes = sizeof(Vertex);
     m_vertexBufferView.SizeInBytes = vBufferSize;
 
     int iBufferSize = sizeof(indices);
-    ComPtr<ID3D12Resource> srcIndexBuffer;
-    CreateBuffer(srcIndexBuffer.Get(), iBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
-    CreateBuffer(m_indexBuffer.Get(), iBufferSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
-    BufferTransition(srcIndexBuffer.Get(), m_indexBuffer.Get(), iBufferSize, reinterpret_cast<BYTE*>(indices));
+    //ComPtr<ID3D12Resource> srcIndexBuffer;
+    //CreateBuffer(&srcIndexBuffer, iBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
+    //CreateBuffer(&m_indexBuffer, iBufferSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COPY_DEST);
+    //BufferTransition(&srcIndexBuffer, &m_indexBuffer, iBufferSize, reinterpret_cast<BYTE*>(indices));
+    CreateBufferTransition(iBufferSize, &m_indexBuffer, reinterpret_cast<BYTE*>(indices));
 
     m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
@@ -430,10 +504,38 @@ void Raytracing::CreateInputBuffer() {
 
 void Raytracing::CreateConstantBuffer() {
     const UINT cBufferSize = sizeof(ConstantBuffer) * FrameCount;
-    CreateBuffer(m_constantBuffer.Get(), cBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
+    D3D12_RESOURCE_DESC resourceDescUpload = {};
+    resourceDescUpload.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    resourceDescUpload.Alignment = 0;
+    resourceDescUpload.Width = cBufferSize;
+    resourceDescUpload.Height = 1;
+    resourceDescUpload.DepthOrArraySize = 1;
+    resourceDescUpload.MipLevels = 1;
+    resourceDescUpload.Format = DXGI_FORMAT_UNKNOWN;
+    resourceDescUpload.SampleDesc.Count = 1;
+    resourceDescUpload.SampleDesc.Quality = 0;
+    resourceDescUpload.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    resourceDescUpload.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    D3D12_HEAP_PROPERTIES heapPropertiesUpload = {};
+    heapPropertiesUpload.Type = D3D12_HEAP_TYPE_UPLOAD;
+    heapPropertiesUpload.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapPropertiesUpload.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapPropertiesUpload.CreationNodeMask = 1;
+    heapPropertiesUpload.VisibleNodeMask = 1;
+
+    m_device->CreateCommittedResource(
+        &heapPropertiesUpload,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDescUpload,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&m_constantBuffer));
+    m_constantBuffer.Get()->SetName(L"Buffer Upload Resource Heap");
+    //CreateBuffer(&m_constantBuffer, cBufferSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_GENERIC_READ);
 
     D3D12_RANGE readRange = { 0, 0 };
-    m_constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_constantBufferLoc));
+    m_constantBuffer.Get()->Map(0, &readRange, reinterpret_cast<void**>(&m_constantBufferLoc));
     ZeroMemory(m_constantBufferLoc, cBufferSize);
 }
 

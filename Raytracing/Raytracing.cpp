@@ -606,12 +606,12 @@ Raytracing::AccelerationStructureBuffers Raytracing::CreateBottomLevelAS(
 
     AccelerationStructureBuffers buffers;
     buffers.pScratch = CreateBuffer(
-        scratchSize, 
+        static_cast<int>(scratchSize),
         D3D12_RESOURCE_STATE_COMMON, 
         D3D12_HEAP_TYPE_DEFAULT, 
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     buffers.pResult = CreateBuffer(
-        resultSize,
+        static_cast<int>(resultSize),
         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, 
         D3D12_HEAP_TYPE_DEFAULT,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
@@ -666,18 +666,18 @@ void Raytracing::CreateTopLevelAS(
             D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
         m_topLevelASBuffers.pScratch = CreateBuffer(
-            scratchSize,
+            static_cast<int>(scratchSize),
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         m_topLevelASBuffers.pResult = CreateBuffer(
-            resultSize,
+            static_cast<int>(resultSize),
             D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
             D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
         m_topLevelASBuffers.pInstanceDesc = CreateBuffer(
-            instanceDescSize,
+            static_cast<int>(instanceDescSize),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             D3D12_HEAP_TYPE_UPLOAD,
             D3D12_RESOURCE_FLAG_NONE);

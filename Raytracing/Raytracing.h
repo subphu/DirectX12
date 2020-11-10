@@ -9,6 +9,7 @@
 
 #include <string>    
 #include <iostream>
+#include <fstream>
 #include <sstream>   
 #include <vector>
 
@@ -179,5 +180,11 @@ private:
 		const std::vector<std::pair<ComPtr<ID3D12Resource>, DirectX::XMMATRIX>>& instances,
 		bool updateOnly = false);
 	void CreateAccelerationStructures();
+
+
+	ComPtr<ID3D12RootSignature> CreateRayGenSignature();
+	ComPtr<ID3D12RootSignature> CreateMissSignature();
+	ComPtr<ID3D12RootSignature> CreateHitSignature();
+
 };
 

@@ -737,3 +737,76 @@ void Raytracing::CreateAccelerationStructures() {
     // Store the AS buffers. The rest of the buffers will be released once we exit the function
     m_bottomLevelAS = bottomLevelBuffers.pResult;
 }
+
+ComPtr<ID3D12RootSignature> Raytracing::CreateRayGenSignature() {
+
+    D3D12_DESCRIPTOR_RANGE rangeUav = {};
+    rangeUav.BaseShaderRegister = 0;
+    rangeUav.NumDescriptors = 1;
+    rangeUav.RegisterSpace = 0;
+    rangeUav.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    rangeUav.OffsetInDescriptorsFromTableStart = 0;
+
+    D3D12_DESCRIPTOR_RANGE rangeSrv {};
+    rangeSrv.BaseShaderRegister = 0;
+    rangeSrv.NumDescriptors = 1;
+    rangeSrv.RegisterSpace = 0;
+    rangeSrv.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    rangeSrv.OffsetInDescriptorsFromTableStart = 1;
+
+    std::vector<D3D12_DESCRIPTOR_RANGE> rangeStorage = { rangeUav, rangeSrv };
+
+    D3D12_ROOT_PARAMETER param = {};
+    param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    param.DescriptorTable.NumDescriptorRanges = 2;
+    param.DescriptorTable.pDescriptorRanges = rangeStorage.data();
+
+    D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
+    rootDesc.NumParameters = 1;
+    rootDesc.pParameters = &param;
+    rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+
+    ID3DBlob* pSigBlob;
+    ID3DBlob* pErrorBlob;
+    D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &pSigBlob, &pErrorBlob);
+
+    ID3D12RootSignature* pRootSig;
+    m_device->CreateRootSignature(0, pSigBlob->GetBufferPointer(), pSigBlob->GetBufferSize(), IID_PPV_ARGS(&pRootSig));
+    return pRootSig;
+}
+
+ComPtr<ID3D12RootSignature> Raytracing::CreateMissSignature() {
+    D3D12_ROOT_PARAMETER param = {};
+    param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    param.Descriptor.RegisterSpace = 0;
+    param.Descriptor.ShaderRegister = 1;
+    param.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
+    rootDesc.NumParameters = 1;
+    rootDesc.pParameters = &param;
+    rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+
+    ID3DBlob* pSigBlob;
+    ID3DBlob* pErrorBlob;
+    D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &pSigBlob, &pErrorBlob);
+
+    ID3D12RootSignature* pRootSig;
+    m_device->CreateRootSignature(0, pSigBlob->GetBufferPointer(), pSigBlob->GetBufferSize(), IID_PPV_ARGS(&pRootSig));
+    return pRootSig;
+}
+
+ComPtr<ID3D12RootSignature> Raytracing::CreateHitSignature() {
+    D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
+    rootDesc.NumParameters = 0;
+    rootDesc.pParameters = {};
+    rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+
+    ID3DBlob* pSigBlob;
+    ID3DBlob* pErrorBlob;
+    D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &pSigBlob, &pErrorBlob);
+
+    ID3D12RootSignature* pRootSig;
+    m_device->CreateRootSignature(0, pSigBlob->GetBufferPointer(), pSigBlob->GetBufferSize(), IID_PPV_ARGS(&pRootSig));
+    return pRootSig;
+}

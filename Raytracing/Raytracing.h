@@ -186,5 +186,19 @@ private:
 	ComPtr<ID3D12RootSignature> CreateMissSignature();
 	ComPtr<ID3D12RootSignature> CreateHitSignature();
 
+	IDxcBlob* CompileShaderLibrary(LPCWSTR fileName);
+	void CreateRaytracingPipeline();
+
+	ComPtr<IDxcBlob> m_rayGenLibrary;
+	ComPtr<IDxcBlob> m_hitLibrary;
+	ComPtr<IDxcBlob> m_missLibrary;
+
+	ComPtr<ID3D12RootSignature> m_rayGenSignature;
+	ComPtr<ID3D12RootSignature> m_hitSignature;
+	ComPtr<ID3D12RootSignature> m_missSignature;
+
+	ComPtr<ID3D12StateObject> m_rtStateObject;
+	ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
+
 };
 

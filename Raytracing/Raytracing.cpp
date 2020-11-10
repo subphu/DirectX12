@@ -866,4 +866,8 @@ IDxcBlob* Raytracing::CompileShaderLibrary(LPCWSTR fileName) {
 }
 
 void Raytracing::CreateRaytracingPipeline() {
+    m_rayGenLibrary = CompileShaderLibrary(L"RayGen.hlsl");
+    m_missLibrary   = CompileShaderLibrary(L"Miss.hlsl");
+    m_hitLibrary    = CompileShaderLibrary(L"Hit.hlsl");
+
 }

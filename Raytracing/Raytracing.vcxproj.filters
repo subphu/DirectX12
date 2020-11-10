@@ -44,4 +44,18 @@
       <Filter>Resource Files</Filter>
     </FxCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="RayGen.hlsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Miss.hlsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Hit.hlsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="Common.hlsl">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
 </Project>

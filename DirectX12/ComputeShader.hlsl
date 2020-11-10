@@ -23,5 +23,24 @@ void main(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid :
 	if (newPos[DTid.x].pos.y < -10) {
 		newPos[DTid.x].pos.y = 10;
 	}
+	//newPos[DTid.x].pos += oldPos[DTid.x].pos * 0.0004;
+	/*if (newPos[DTid.x].pos.x > 25) {
+		newPos[DTid.x].pos.x -= 25;
+	}
+	if (newPos[DTid.x].pos.y > 25) {
+		newPos[DTid.x].pos.y -= 25;
+	}
+	if (newPos[DTid.x].pos.z > 25) {
+		newPos[DTid.x].pos.z -= 25;
+	}
+	if (newPos[DTid.x].pos.x < -25) {
+		newPos[DTid.x].pos.x += 25;
+	}
+	if (newPos[DTid.x].pos.y < -25) {
+		newPos[DTid.x].pos.y += 25;
+	}
+	if (newPos[DTid.x].pos.z < -25) {
+		newPos[DTid.x].pos.z += 25;
+	}*/
 
 }

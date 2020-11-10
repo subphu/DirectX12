@@ -2,6 +2,11 @@
 
 void RestartComputeBuffer() {
     if (prevSpaceKey || !spaceKey) { return; }
+
+    //std::wstringstream ss;
+    //ss << "Restart" << "\n";
+    //OutputDebugString(ss.str().c_str());
+
     if (fence[0]->GetCompletedValue() < fenceValue[0]) {
         fence[0]->SetEventOnCompletion(fenceValue[0], fenceEvent);
         WaitForSingleObject(fenceEvent, INFINITE);
@@ -972,9 +977,6 @@ void InitViewport() {
 }
 
 void CreateConstantBuffer() {
-
-
-
 
     const UINT constantBufferSize = sizeof(ConstantBuffer) * frameBufferCount;
 

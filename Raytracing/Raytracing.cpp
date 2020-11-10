@@ -409,25 +409,6 @@ HRESULT Raytracing::CompileShader(LPCWSTR filename, LPCSTR target, D3D12_SHADER_
     return hr;
 }
 
-void Raytracing::BufferTransition(ID3D12Resource** srcBuffer, ID3D12Resource** dstBuffer, int bufferSize, BYTE* data, D3D12_RESOURCE_STATES dstStates) {
-    BYTE* pData;
-    (*srcBuffer)->Map(0, NULL, reinterpret_cast<void**>(&pData));
-    memcpy(pData, data, bufferSize);
-    (*srcBuffer)->Unmap(0, NULL);
-
-    m_commandList->CopyBufferRegion(*dstBuffer, 0, *srcBuffer, 0, bufferSize);
-
-    D3D12_RESOURCE_BARRIER resourceBarrier = {};
-    resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    resourceBarrier.Transition.pResource = *dstBuffer;
-    resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    resourceBarrier.Transition.StateAfter = dstStates;
-    resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-    m_commandList->ResourceBarrier(1, &resourceBarrier);
-}
-
 ID3D12Resource* Raytracing::CreateBuffer(int bufferSize, D3D12_RESOURCE_STATES resourceStates, D3D12_HEAP_TYPE heapType, D3D12_RESOURCE_FLAGS flags) {
     D3D12_RESOURCE_DESC resourceDesc = {};
     resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;

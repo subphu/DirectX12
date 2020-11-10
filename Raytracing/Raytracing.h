@@ -122,12 +122,6 @@ private:
 
 	HRESULT CompileShader(LPCWSTR filename, LPCSTR target, D3D12_SHADER_BYTECODE* byteCode);
 	
-	void BufferTransition(
-		ID3D12Resource** srcBuffer,
-		ID3D12Resource** dstBuffer,
-		int bufferSize, BYTE* data,
-		D3D12_RESOURCE_STATES dstStates = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-
 	ID3D12Resource* CreateBuffer(int bufferSize, 
 		D3D12_RESOURCE_STATES resourceStates,
 		D3D12_HEAP_TYPE heapType = D3D12_HEAP_TYPE_DEFAULT,

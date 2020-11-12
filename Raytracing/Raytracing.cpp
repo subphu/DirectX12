@@ -892,7 +892,7 @@ void Raytracing::CreateRaytracingPipeline() {
     m_hitLibrary = CompileShaderLibrary(L"Hit.hlsl");
 
     D3D12_EXPORT_DESC rayGenExportDesc = {};
-    rayGenExportDesc.Name = L"RayGen.hlsl";
+    rayGenExportDesc.Name = L"RayGen";
     rayGenExportDesc.ExportToRename = nullptr;
     rayGenExportDesc.Flags = D3D12_EXPORT_FLAG_NONE;
 
@@ -907,11 +907,11 @@ void Raytracing::CreateRaytracingPipeline() {
     rayGenLibSubobject.pDesc = &rayGenLibDesc;
     subobjects[currentIndex++] = rayGenLibSubobject;
 
-    D3D12_EXPORT_DESC missExportDesc = { L"RayGen.hlsl" , nullptr, D3D12_EXPORT_FLAG_NONE };
+    D3D12_EXPORT_DESC missExportDesc = { L"Miss" , nullptr, D3D12_EXPORT_FLAG_NONE };
     D3D12_DXIL_LIBRARY_DESC missLibDesc = { {m_missLibrary->GetBufferPointer(), m_missLibrary->GetBufferSize()}, 1, &missExportDesc };
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &missLibDesc };
 
-    D3D12_EXPORT_DESC hitExportDesc = { L"RayGen.hlsl" , nullptr, D3D12_EXPORT_FLAG_NONE };
+    D3D12_EXPORT_DESC hitExportDesc = { L"ClosestHit" , nullptr, D3D12_EXPORT_FLAG_NONE };
     D3D12_DXIL_LIBRARY_DESC hitLibDesc = { {m_hitLibrary->GetBufferPointer(), m_hitLibrary->GetBufferSize()}, 1, &hitExportDesc };
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &hitLibDesc };
 
@@ -1028,12 +1028,11 @@ void Raytracing::CreateRaytracingPipeline() {
     // Describe the ray tracing pipeline state object
     D3D12_STATE_OBJECT_DESC pipelineDesc = {};
     pipelineDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
-    pipelineDesc.NumSubobjects = static_cast<UINT>(subobjects.size());
+    pipelineDesc.NumSubobjects = currentIndex;
     pipelineDesc.pSubobjects = subobjects.data();
 
-    ID3D12StateObject* rtStateObject = nullptr;
-    m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&rtStateObject));
-    //m_rtStateObject->QueryInterface(IID_PPV_ARGS(&m_rtStateObjectProps));
+    m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&m_rtStateObject));
+    m_rtStateObject->QueryInterface(IID_PPV_ARGS(&m_rtStateObjectProps));
 }
 
 void Raytracing::CreateRaytracingOutputBuffer() {
@@ -1086,3 +1085,4 @@ void Raytracing::CreateShaderResourceHeap() {
     srvDesc.RaytracingAccelerationStructure.Location = m_topLevelASBuffers.pResult->GetGPUVirtualAddress();
     m_device->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
 }
+

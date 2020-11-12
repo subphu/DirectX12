@@ -79,8 +79,68 @@ void Raytracing::UpdateRenderPipeline() {
 
         m_commandList->DrawIndexedInstanced(m_indicesCount, 1, 0, 0, 0);
     } else {
-        const float clearColor[] = { 0.6f, 0.8f, 0.4f, 1.0f };
-        m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+        std::vector<ID3D12DescriptorHeap*> heaps = { m_srvUavHeap.Get() };
+        m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
+
+        D3D12_RESOURCE_BARRIER resourceBarrierToUav = {};
+        resourceBarrierToUav.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        resourceBarrierToUav.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        resourceBarrierToUav.Transition.pResource = m_outputResource.Get();
+        resourceBarrierToUav.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        resourceBarrierToUav.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        resourceBarrierToUav.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(1, &resourceBarrierToUav);
+
+        D3D12_GPU_VIRTUAL_ADDRESS sbtAddress = m_sbtStorage->GetGPUVirtualAddress();
+        D3D12_DISPATCH_RAYS_DESC desc = {};
+        desc.RayGenerationShaderRecord.StartAddress = sbtAddress;
+        desc.RayGenerationShaderRecord.SizeInBytes = m_rayGenEntrySize;
+
+        desc.MissShaderTable.StartAddress = sbtAddress + m_rayGenEntrySize;
+        desc.MissShaderTable.SizeInBytes = m_missEntrySize;
+        desc.MissShaderTable.StrideInBytes = m_missEntrySize;
+
+        desc.HitGroupTable.StartAddress = sbtAddress + m_rayGenEntrySize + m_missEntrySize;
+        desc.HitGroupTable.SizeInBytes = m_hitGroupEntrySize;
+        desc.HitGroupTable.StrideInBytes = m_missEntrySize;
+
+        desc.Width = m_width;
+        desc.Height = m_height;
+        desc.Depth = 1;
+
+        m_commandList->SetPipelineState1(m_rtStateObject.Get());
+        m_commandList->DispatchRays(&desc);
+
+        D3D12_RESOURCE_BARRIER resourceBarrierToCopySrc = {};
+        resourceBarrierToCopySrc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        resourceBarrierToCopySrc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        resourceBarrierToCopySrc.Transition.pResource = m_outputResource.Get();
+        resourceBarrierToCopySrc.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        resourceBarrierToCopySrc.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        resourceBarrierToCopySrc.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(1, &resourceBarrierToCopySrc);
+
+        D3D12_RESOURCE_BARRIER resourceBarrierToCopyDst = {};
+        resourceBarrierToCopyDst.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        resourceBarrierToCopyDst.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        resourceBarrierToCopyDst.Transition.pResource = m_renderTargets[m_frameIndex].Get();
+        resourceBarrierToCopyDst.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        resourceBarrierToCopyDst.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+        resourceBarrierToCopyDst.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(1, &resourceBarrierToCopyDst);
+
+        m_commandList->CopyResource(m_renderTargets[m_frameIndex].Get(), m_outputResource.Get());
+
+
+        D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
+        resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        resourceBarrierToTarget.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        resourceBarrierToTarget.Transition.pResource = m_renderTargets[m_frameIndex].Get();
+        resourceBarrierToTarget.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        resourceBarrierToTarget.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        resourceBarrierToTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        m_commandList->ResourceBarrier(1, &resourceBarrierToTarget);
+
 
     }
     
@@ -169,9 +229,9 @@ void Raytracing::Init() {
     WaitForPreviousFrame();
 
     CreateRaytracingPipeline();
-
     CreateRaytracingOutputBuffer();
     CreateShaderResourceHeap();
+    CreateShaderBindingTable();
 }
 
 void Raytracing::Destroy() {
@@ -1091,22 +1151,22 @@ void Raytracing::CreateShaderResourceHeap() {
 void Raytracing::CreateShaderBindingTable() {
     // A SBT entry is made of a program ID and a set of parameters, taking 8 bytes each. 
     UINT m_progIdSize = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
-    uint32_t rayGenEntrySize   = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-    uint32_t missEntrySize     = ROUND_UP(m_progIdSize + 8 * 0, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
-    uint32_t hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-    uint32_t sbtSize = ROUND_UP(rayGenEntrySize + missEntrySize + hitGroupEntrySize, 256);
+    m_rayGenEntrySize   = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+    m_missEntrySize     = ROUND_UP(m_progIdSize + 8 * 0, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
+    m_hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+    m_sbtSize           = ROUND_UP(m_rayGenEntrySize + m_missEntrySize + m_hitGroupEntrySize, 256);
 
     uint8_t* pData;
-    m_sbtStorage = CreateBuffer(sbtSize, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_HEAP_TYPE_UPLOAD);
+    m_sbtStorage = CreateBuffer(m_sbtSize, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_HEAP_TYPE_UPLOAD);
     m_sbtStorage->Map(0, nullptr, reinterpret_cast<void**>(&pData));
 
     auto heapPointer = reinterpret_cast<UINT64*>(m_srvUavHeap->GetGPUDescriptorHandleForHeapStart().ptr);
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"RayGen"), m_progIdSize); // Copy the shader identifier
     memcpy(pData + m_progIdSize, &heapPointer, 8 * 1); // Copy all its resources pointers or values in bulk
-    pData += rayGenEntrySize;
+    pData += m_rayGenEntrySize;
 
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"Miss"), m_progIdSize);
-    pData += missEntrySize;
+    pData += m_missEntrySize;
 
     auto vertexHeapPointer = { (void*)(m_vertexBuffer->GetGPUVirtualAddress()) };
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"HitGroup"), m_progIdSize);

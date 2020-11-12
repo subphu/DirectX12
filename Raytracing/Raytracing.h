@@ -208,5 +208,10 @@ private:
 
 	void CreateShaderBindingTable();
 	ComPtr<ID3D12Resource> m_sbtStorage;
+
+	uint32_t m_rayGenEntrySize;
+	uint32_t m_missEntrySize;
+	uint32_t m_hitGroupEntrySize;
+	uint32_t m_sbtSize;
 };
 

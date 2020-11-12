@@ -1031,7 +1031,9 @@ void Raytracing::CreateRaytracingPipeline() {
     pipelineDesc.NumSubobjects = currentIndex;
     pipelineDesc.pSubobjects = subobjects.data();
 
-    m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&m_rtStateObject));
+
+    HRESULT hr = m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&m_rtStateObject));
+    if (FAILED(hr)) { throw std::logic_error("Could not create the raytracing state object"); }
     m_rtStateObject->QueryInterface(IID_PPV_ARGS(&m_rtStateObjectProps));
 }
 
@@ -1086,3 +1088,29 @@ void Raytracing::CreateShaderResourceHeap() {
     m_device->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
 }
 
+void Raytracing::CreateShaderBindingTable() {
+    // A SBT entry is made of a program ID and a set of parameters, taking 8 bytes each. 
+    UINT m_progIdSize = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
+    uint32_t rayGenEntrySize   = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+    uint32_t missEntrySize     = ROUND_UP(m_progIdSize + 8 * 0, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
+    uint32_t hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+    uint32_t sbtSize = ROUND_UP(rayGenEntrySize + missEntrySize + hitGroupEntrySize, 256);
+
+    uint8_t* pData;
+    m_sbtStorage = CreateBuffer(sbtSize, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_HEAP_TYPE_UPLOAD);
+    m_sbtStorage->Map(0, nullptr, reinterpret_cast<void**>(&pData));
+
+    auto heapPointer = reinterpret_cast<UINT64*>(m_srvUavHeap->GetGPUDescriptorHandleForHeapStart().ptr);
+    memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"RayGen"), m_progIdSize); // Copy the shader identifier
+    memcpy(pData + m_progIdSize, &heapPointer, 8 * 1); // Copy all its resources pointers or values in bulk
+    pData += rayGenEntrySize;
+
+    memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"Miss"), m_progIdSize);
+    pData += missEntrySize;
+
+    auto vertexHeapPointer = { (void*)(m_vertexBuffer->GetGPUVirtualAddress()) };
+    memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"HitGroup"), m_progIdSize);
+    memcpy(pData + m_progIdSize, &vertexHeapPointer, 8 * 1);
+
+    m_sbtStorage->Unmap(0, nullptr);
+}

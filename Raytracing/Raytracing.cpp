@@ -776,15 +776,9 @@ ComPtr<ID3D12RootSignature> Raytracing::CreateRayGenSignature() {
 }
 
 ComPtr<ID3D12RootSignature> Raytracing::CreateMissSignature() {
-    D3D12_ROOT_PARAMETER param = {};
-    param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-    param.Descriptor.RegisterSpace = 0;
-    param.Descriptor.ShaderRegister = 1;
-    param.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
     D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-    rootDesc.NumParameters = 1;
-    rootDesc.pParameters = &param;
+    rootDesc.NumParameters = 0;
+    rootDesc.pParameters = {};
     rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
 
     ID3DBlob* pSigBlob;
@@ -797,9 +791,15 @@ ComPtr<ID3D12RootSignature> Raytracing::CreateMissSignature() {
 }
 
 ComPtr<ID3D12RootSignature> Raytracing::CreateHitSignature() {
+    D3D12_ROOT_PARAMETER param = {};
+    param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    param.Descriptor.RegisterSpace = 0;
+    param.Descriptor.ShaderRegister = 1;
+
+    param.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-    rootDesc.NumParameters = 0;
-    rootDesc.pParameters = {};
+    rootDesc.NumParameters = 1;
+    rootDesc.pParameters = &param;
     rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
 
     ID3DBlob* pSigBlob;
@@ -832,12 +832,16 @@ IDxcBlob* Raytracing::CompileShaderLibrary(LPCWSTR fileName) {
 
     // Create blob from the string
     IDxcBlobEncoding* pTextBlob;
-    pLibrary->CreateBlobWithEncodingFromPinned(
-        (LPBYTE)sShader.c_str(), (uint32_t)sShader.size(), 0, &pTextBlob);
+    pLibrary->CreateBlobWithEncodingFromPinned((LPBYTE)sShader.c_str(), (uint32_t)sShader.size(), 0, &pTextBlob);
+    if (!pTextBlob) { throw std::logic_error("Cannot create blob file"); }
 
     // Compile
     IDxcOperationResult* pResult;
-    pCompiler->Compile(pTextBlob, fileName, L"", L"lib_6_3", nullptr, 0, nullptr, 0,
+    pCompiler->Compile(
+        pTextBlob, fileName, 
+        L"", L"lib_6_3",
+        nullptr, 0,
+        nullptr, 0, 
         dxcIncludeHandler, &pResult);
 
     // Verify the result
@@ -865,70 +869,6 @@ IDxcBlob* Raytracing::CompileShaderLibrary(LPCWSTR fileName) {
     return pBlob;
 }
 
-D3D12_STATE_SUBOBJECT Raytracing::CreateSubobjectLibrary(IDxcBlob* dxilLibrary, const std::wstring& symbolExports) {
-    D3D12_EXPORT_DESC exportDesc = {};
-    exportDesc.Name = symbolExports.c_str();
-    exportDesc.ExportToRename = nullptr;
-    exportDesc.Flags = D3D12_EXPORT_FLAG_NONE;
-
-    D3D12_DXIL_LIBRARY_DESC libDesc;
-    libDesc.DXILLibrary.BytecodeLength = dxilLibrary->GetBufferSize();
-    libDesc.DXILLibrary.pShaderBytecode = dxilLibrary->GetBufferPointer();
-    libDesc.NumExports = 1;
-    libDesc.pExports = &exportDesc;
-
-    D3D12_STATE_SUBOBJECT libSubobject = {};
-    libSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
-    libSubobject.pDesc = &libDesc;
-
-    return libSubobject;
-}
-
-D3D12_STATE_SUBOBJECT Raytracing::CreateSubobjectSignature(ID3D12RootSignature* signature) {
-    D3D12_STATE_SUBOBJECT rootSigObject = {};
-    rootSigObject.Type = D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE;
-    rootSigObject.pDesc = &signature;
-    return rootSigObject;
-}
-
-D3D12_STATE_SUBOBJECT Raytracing::CreateSubobjectSigAssoc(D3D12_STATE_SUBOBJECT* prevSubobject, const std::wstring& symbolExports) {
-    std::vector<LPCWSTR> symbolPointers = { symbolExports.c_str() };
-    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION association = {};
-    association.NumExports = 1;
-    association.pExports = symbolPointers.data();
-    association.pSubobjectToAssociate = prevSubobject;
-
-    D3D12_STATE_SUBOBJECT rootSigAssociationObject = {};
-    rootSigAssociationObject.Type = D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION;
-    rootSigAssociationObject.pDesc = &association;
-
-    return rootSigAssociationObject;
-}
-
-D3D12_STATE_SUBOBJECT Raytracing::CreateSubobjectRootSignature(D3D12_ROOT_SIGNATURE_FLAGS flags, D3D12_STATE_SUBOBJECT_TYPE state) {
-    ID3DBlob* serializedRootSignature;
-    ID3DBlob* error;
-
-    ID3D12RootSignature* rootSignature;
-    D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-    rootDesc.NumParameters = 0;
-    rootDesc.pParameters = nullptr;
-    rootDesc.Flags = flags;
-
-    D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &serializedRootSignature, &error);
-
-    m_device->CreateRootSignature(0,
-        serializedRootSignature->GetBufferPointer(),
-        serializedRootSignature->GetBufferSize(),
-        IID_PPV_ARGS(&rootSignature));
-    serializedRootSignature->Release();
-
-    D3D12_STATE_SUBOBJECT rootSigObject;
-    rootSigObject.Type = state;
-    rootSigObject.pDesc = &rootSignature;
-
-    return rootSigObject;
-}
 
 void Raytracing::CreateRaytracingPipeline() {
     UINT64 subobjectCount =
@@ -948,9 +888,31 @@ void Raytracing::CreateRaytracingPipeline() {
     m_rayGenLibrary = CompileShaderLibrary(L"RayGen.hlsl");
     m_missLibrary = CompileShaderLibrary(L"Miss.hlsl");
     m_hitLibrary = CompileShaderLibrary(L"Hit.hlsl");
-    subobjects[currentIndex++] = CreateSubobjectLibrary(m_rayGenLibrary.Get(), L"RayGen");
-    subobjects[currentIndex++] = CreateSubobjectLibrary(m_missLibrary.Get(), L"Miss");
-    subobjects[currentIndex++] = CreateSubobjectLibrary(m_hitLibrary.Get(), L"ClosestHit");
+
+    D3D12_EXPORT_DESC rayGenExportDesc = {};
+    rayGenExportDesc.Name = L"RayGen.hlsl";
+    rayGenExportDesc.ExportToRename = nullptr;
+    rayGenExportDesc.Flags = D3D12_EXPORT_FLAG_NONE;
+
+    D3D12_DXIL_LIBRARY_DESC rayGenLibDesc;
+    rayGenLibDesc.DXILLibrary.BytecodeLength = m_rayGenLibrary->GetBufferSize();
+    rayGenLibDesc.DXILLibrary.pShaderBytecode = m_rayGenLibrary->GetBufferPointer();
+    rayGenLibDesc.NumExports = 1;
+    rayGenLibDesc.pExports = &rayGenExportDesc;
+
+    D3D12_STATE_SUBOBJECT rayGenLibSubobject = {};
+    rayGenLibSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+    rayGenLibSubobject.pDesc = &rayGenLibDesc;
+    subobjects[currentIndex++] = rayGenLibSubobject;
+
+    D3D12_EXPORT_DESC missExportDesc = { L"RayGen.hlsl" , nullptr, D3D12_EXPORT_FLAG_NONE };
+    D3D12_DXIL_LIBRARY_DESC missLibDesc = { {m_missLibrary->GetBufferPointer(), m_missLibrary->GetBufferSize()}, 1, &missExportDesc };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &missLibDesc };
+
+    D3D12_EXPORT_DESC hitExportDesc = { L"RayGen.hlsl" , nullptr, D3D12_EXPORT_FLAG_NONE };
+    D3D12_DXIL_LIBRARY_DESC hitLibDesc = { {m_hitLibrary->GetBufferPointer(), m_hitLibrary->GetBufferSize()}, 1, &hitExportDesc };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &hitLibDesc };
+
 
     D3D12_HIT_GROUP_DESC desc = {};
     desc.HitGroupExport = L"HitGroup";
@@ -963,6 +925,7 @@ void Raytracing::CreateRaytracingPipeline() {
     hitGroup.pDesc = &desc;
     subobjects[currentIndex++] = hitGroup;
 
+
     D3D12_RAYTRACING_SHADER_CONFIG shaderDesc = {};
     shaderDesc.MaxPayloadSizeInBytes = 4 * sizeof(float);
     shaderDesc.MaxAttributeSizeInBytes = 2 * sizeof(float);
@@ -971,6 +934,7 @@ void Raytracing::CreateRaytracingPipeline() {
     shaderConfigObject.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG;
     shaderConfigObject.pDesc = &shaderDesc;
     subobjects[currentIndex++] = shaderConfigObject;
+
 
     std::vector<std::wstring> exportedSymbols = { L"RayGen", L"Miss", L"HitGroup"}; // ClosestHit removed
     std::vector<LPCWSTR> exportedSymbolPointers = {};
@@ -998,20 +962,56 @@ void Raytracing::CreateRaytracingPipeline() {
     m_rayGenSignature = CreateRayGenSignature();
     m_missSignature   = CreateMissSignature();
     m_hitSignature    = CreateHitSignature();
-    subobjects[currentIndex++] = CreateSubobjectSignature(m_rayGenSignature.Get());
-    subobjects[currentIndex++] = CreateSubobjectSigAssoc(&subobjects[currentIndex - 1], L"RayGen");
-    subobjects[currentIndex++] = CreateSubobjectSignature(m_missSignature.Get());
-    subobjects[currentIndex++] = CreateSubobjectSigAssoc(&subobjects[currentIndex - 1], L"Miss");
-    subobjects[currentIndex++] = CreateSubobjectSignature(m_hitSignature.Get());
-    subobjects[currentIndex++] = CreateSubobjectSigAssoc(&subobjects[currentIndex - 1], L"ClosestHit");
 
-    subobjects[currentIndex++] = CreateSubobjectRootSignature(
-        D3D12_ROOT_SIGNATURE_FLAG_NONE,
-        D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE);
+    ID3D12RootSignature* rayGenSignature = m_rayGenSignature.Get();
+    ID3D12RootSignature* missSignature = m_missSignature.Get();
+    ID3D12RootSignature* hitSignature = m_hitSignature.Get();
 
-    subobjects[currentIndex++] = CreateSubobjectRootSignature(
-        D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE,
-        D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE);
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &rayGenSignature };
+    LPCWSTR rayGenSymbolPointers = L"RayGen" ;
+    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION rayGenAssociation = {};
+    rayGenAssociation.NumExports = 1;
+    rayGenAssociation.pExports = &rayGenSymbolPointers;
+    rayGenAssociation.pSubobjectToAssociate = &subobjects[currentIndex - 1];
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &rayGenAssociation };
+
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &missSignature };
+    LPCWSTR missSymbolPointers = L"Miss";
+    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION missAssociation = { &subobjects[currentIndex - 1], 1, &missSymbolPointers };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &missAssociation };
+
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &hitSignature };
+    LPCWSTR hitSymbolPointers = L"ClosestHit";
+    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION hitAssociation = { &subobjects[currentIndex - 1], 1, &hitSymbolPointers };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &hitAssociation };
+
+
+    ID3DBlob* serializedRootSignature;
+    ID3DBlob* error;
+
+    ID3D12RootSignature* globalRootSignature;
+    D3D12_ROOT_SIGNATURE_DESC rootDesc = { 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE };
+    D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &serializedRootSignature, &error);
+
+    m_device->CreateRootSignature(0,
+        serializedRootSignature->GetBufferPointer(),
+        serializedRootSignature->GetBufferSize(),
+        IID_PPV_ARGS(&globalRootSignature));
+    serializedRootSignature->Release();
+
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, &globalRootSignature };
+
+    ID3D12RootSignature* localRootSignature;
+    rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
+    D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &serializedRootSignature, &error);
+
+    m_device->CreateRootSignature(0,
+        serializedRootSignature->GetBufferPointer(),
+        serializedRootSignature->GetBufferSize(),
+        IID_PPV_ARGS(&localRootSignature));
+    serializedRootSignature->Release();
+
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &localRootSignature };
 
     // Add a subobject for the ray tracing pipeline configuration
     D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig = {};
@@ -1029,14 +1029,7 @@ void Raytracing::CreateRaytracingPipeline() {
     pipelineDesc.NumSubobjects = static_cast<UINT>(subobjects.size());
     pipelineDesc.pSubobjects = subobjects.data();
 
-    for (int i = 0; i < currentIndex; i++) {
-
-        std::wstringstream ss;
-        ss << subobjects[i].pDesc << "\n";
-        OutputDebugString(ss.str().c_str());
-
-    }
-
-    m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&m_rtStateObject));
+    ID3D12StateObject* rtStateObject = nullptr;
+    m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&rtStateObject));
     //m_rtStateObject->QueryInterface(IID_PPV_ARGS(&m_rtStateObjectProps));
 }

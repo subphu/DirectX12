@@ -188,10 +188,6 @@ private:
 	ComPtr<ID3D12RootSignature> CreateHitSignature();
 
 	IDxcBlob* CompileShaderLibrary(LPCWSTR fileName);
-	D3D12_STATE_SUBOBJECT CreateSubobjectLibrary(IDxcBlob* dxilLibrary, const std::wstring& symbolExports);
-	D3D12_STATE_SUBOBJECT CreateSubobjectSignature(ID3D12RootSignature* signature);
-	D3D12_STATE_SUBOBJECT CreateSubobjectSigAssoc(D3D12_STATE_SUBOBJECT* prevSubobject, const std::wstring& symbolExports);
-	D3D12_STATE_SUBOBJECT CreateSubobjectRootSignature(D3D12_ROOT_SIGNATURE_FLAGS flags, D3D12_STATE_SUBOBJECT_TYPE state);
 	void CreateRaytracingPipeline();
 
 	ComPtr<IDxcBlob> m_rayGenLibrary;

@@ -201,5 +201,10 @@ private:
 	ComPtr<ID3D12StateObject> m_rtStateObject;
 	ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
 
+	void CreateRaytracingOutputBuffer();
+	void CreateShaderResourceHeap();
+	ComPtr<ID3D12Resource> m_outputResource;
+	ComPtr<ID3D12DescriptorHeap> m_srvUavHeap;
+
 };
 

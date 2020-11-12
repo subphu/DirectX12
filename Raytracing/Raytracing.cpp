@@ -169,6 +169,8 @@ void Raytracing::Init() {
     WaitForPreviousFrame();
 
     CreateRaytracingPipeline();
+
+    CreateRaytracingOutputBuffer();
 }
 
 void Raytracing::Destroy() {
@@ -869,7 +871,6 @@ IDxcBlob* Raytracing::CompileShaderLibrary(LPCWSTR fileName) {
     return pBlob;
 }
 
-
 void Raytracing::CreateRaytracingPipeline() {
     UINT64 subobjectCount =
         3 +     // DXIL libraries
@@ -1033,3 +1034,32 @@ void Raytracing::CreateRaytracingPipeline() {
     m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&rtStateObject));
     //m_rtStateObject->QueryInterface(IID_PPV_ARGS(&m_rtStateObjectProps));
 }
+
+void Raytracing::CreateRaytracingOutputBuffer() {
+    D3D12_RESOURCE_DESC resourceDesc = {};
+    resourceDesc.DepthOrArraySize = 1;
+    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    resourceDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    resourceDesc.Width = m_width;
+    resourceDesc.Height = m_height;
+    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    resourceDesc.MipLevels = 1;
+    resourceDesc.SampleDesc.Count = 1;
+
+    D3D12_HEAP_PROPERTIES heapProperties = {};
+    heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapProperties.CreationNodeMask = 1;
+    heapProperties.VisibleNodeMask = 1;
+
+    m_device->CreateCommittedResource(
+        &heapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_COPY_SOURCE,
+        nullptr,
+        IID_PPV_ARGS(&m_outputResource));
+}
+

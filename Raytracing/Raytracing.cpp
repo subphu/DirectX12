@@ -28,8 +28,21 @@ void Raytracing::Update() {
     m_cbData.view = m_camera.GetView();
     m_cbData.projection = m_camera.GetProjection();
 
-    UINT8* destination = m_constantBufferLoc + sizeof(ConstantBuffer) * m_frameIndex;
-    memcpy(destination, &m_cbData, sizeof(ConstantBuffer));
+    // update constant data
+    uint8_t* pData;
+    m_constantBuffer->Map(0, nullptr, (void**)&pData);
+    memcpy(pData, &m_cbData, sizeof(ConstantBuffer));
+    m_constantBuffer->Unmap(0, nullptr);
+
+    // update instance data
+    InstanceData* current = nullptr;
+    D3D12_RANGE range = { 0, 0 };
+    m_instanceBuffer->Map(0, &range, reinterpret_cast<void**>(&current));
+    for (const auto& inst : m_instances) {
+        current->model = inst.second;
+        current++;
+    }
+    m_instanceBuffer->Unmap(0, nullptr);
 }
 
 void Raytracing::Render() {
@@ -49,8 +62,6 @@ void Raytracing::UpdateRenderPipeline() {
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
-
-    m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBuffer->GetGPUVirtualAddress());
     
     D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
     resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -67,11 +78,18 @@ void Raytracing::UpdateRenderPipeline() {
 
     m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
-    m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
     if (m_raster) {
         const float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+        m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+        std::vector<ID3D12DescriptorHeap*> heaps = { m_cbvSrvHeap.Get() };
+        m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
+
+        D3D12_GPU_DESCRIPTOR_HANDLE handle = m_cbvSrvHeap->GetGPUDescriptorHandleForHeapStart();
+        m_commandList->SetGraphicsRootDescriptorTable(0, handle); // CBV
+        m_commandList->SetGraphicsRootDescriptorTable(1, handle); // SRV
+        m_commandList->SetGraphicsRoot32BitConstant(2, 0, 0);
 
         m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
@@ -217,21 +235,25 @@ void Raytracing::Init() {
     CreateCommandList();
 
     CreateInputBuffer();
-    CreateConstantBuffer();
-    CreateDepthStencilBuffer();
-
-    InitViewport();
 
     CheckRaytracingSupport();
     CreateAccelerationStructures();
+    
+    CreateDepthStencilBuffer();
+    CreateConstantBuffer();
+    CreateInstanceBuffer();
+    CreateCbvSrvHeap();
+
+    InitViewport();
+
 
     ExecuteRenderCommand();
     WaitForPreviousFrame();
 
-    CreateRaytracingPipeline();
-    CreateRaytracingOutputBuffer();
-    CreateShaderResourceHeap();
-    CreateShaderBindingTable();
+    //CreateRaytracingPipeline();
+    //CreateRaytracingOutputBuffer();
+    //CreateShaderResourceHeap();
+    //CreateShaderBindingTable();
 }
 
 void Raytracing::Destroy() {
@@ -299,17 +321,17 @@ void Raytracing::CreateSwapChain(IDXGIFactory4* factory) {
     backBufferDesc.Height = m_height;
     backBufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
-    DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
+    DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
     swapChainDesc.BufferCount = FrameCount;
-    swapChainDesc.BufferDesc = backBufferDesc;
+    swapChainDesc.Width = m_width;
+    swapChainDesc.Height = m_height;
+    swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    swapChainDesc.OutputWindow = m_hwnd;
     swapChainDesc.SampleDesc.Count = 1;
-    swapChainDesc.Windowed = true;
 
-    IDXGISwapChain* swapChain;
-    factory->CreateSwapChain(m_commandQueue.Get(), &swapChainDesc, &swapChain);
+    IDXGISwapChain1* swapChain;
+    factory->CreateSwapChainForHwnd(m_commandQueue.Get(), m_hwnd, &swapChainDesc, nullptr, nullptr, &swapChain);
 
     m_swapChain = static_cast<IDXGISwapChain3*>(swapChain);
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
@@ -340,30 +362,44 @@ void Raytracing::CreateFence() {
 }
 
 void Raytracing::CreateRootSignature() {
-    D3D12_DESCRIPTOR_RANGE1 descriptorTableRanges[1];
-    descriptorTableRanges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    descriptorTableRanges[0].NumDescriptors = 1;
-    descriptorTableRanges[0].BaseShaderRegister = 0;
-    descriptorTableRanges[0].RegisterSpace = 0;
-    descriptorTableRanges[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    descriptorTableRanges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC;
 
-    D3D12_ROOT_DESCRIPTOR_TABLE1 descriptorTable;
-    descriptorTable.NumDescriptorRanges = _countof(descriptorTableRanges);
-    descriptorTable.pDescriptorRanges = &descriptorTableRanges[0];
+    D3D12_DESCRIPTOR_RANGE1 ranges[ParametersCount - 1];
+    ranges[IdxCBV].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+    ranges[IdxCBV].NumDescriptors = 1;
+    ranges[IdxCBV].BaseShaderRegister = 0;
+    ranges[IdxCBV].RegisterSpace = 0;
+    ranges[IdxCBV].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+    ranges[IdxCBV].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC;
+           
+    ranges[IdxSRV].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    ranges[IdxSRV].NumDescriptors = 1;
+    ranges[IdxSRV].BaseShaderRegister = 0;
+    ranges[IdxSRV].RegisterSpace = 0;
+    ranges[IdxSRV].OffsetInDescriptorsFromTableStart = 1; //
+    ranges[IdxSRV].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC;
 
-    D3D12_ROOT_DESCRIPTOR1 rootDesc;
-    rootDesc.ShaderRegister = 0;
-    rootDesc.RegisterSpace = 0;
-    rootDesc.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC;
+    D3D12_ROOT_DESCRIPTOR_TABLE1 descriptorTables[ParametersCount - 1];
+    descriptorTables[IdxCBV].NumDescriptorRanges = 1;
+    descriptorTables[IdxCBV].pDescriptorRanges = &ranges[0];
+                    
+    descriptorTables[IdxSRV].NumDescriptorRanges = 1;
+    descriptorTables[IdxSRV].pDescriptorRanges = &ranges[1];
 
-    D3D12_ROOT_PARAMETER1 rootParameters[GraphicsRootParametersCount];
-    rootParameters[GraphicsRootCBV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    rootParameters[GraphicsRootCBV].Descriptor = rootDesc;
-    rootParameters[GraphicsRootCBV].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    //rootParameters[GraphicsRootSRVTable].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    //rootParameters[GraphicsRootSRVTable].DescriptorTable = descriptorTable;
-    //rootParameters[GraphicsRootSRVTable].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+    D3D12_ROOT_CONSTANTS rootConstants;
+    rootConstants.Num32BitValues = 1;
+    rootConstants.ShaderRegister = 1;
+    rootConstants.RegisterSpace = 0;
+
+    D3D12_ROOT_PARAMETER1 rootParameters[ParametersCount];
+    rootParameters[IdxCBV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameters[IdxCBV].DescriptorTable = descriptorTables[0];
+    rootParameters[IdxCBV].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[IdxSRV].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    rootParameters[IdxSRV].DescriptorTable = descriptorTables[1];
+    rootParameters[IdxSRV].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    rootParameters[IdxInstance].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    rootParameters[IdxInstance].Constants = rootConstants;
+    rootParameters[IdxInstance].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
     D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
@@ -533,7 +569,6 @@ ID3D12Resource* Raytracing::CreateBufferTransition(int bufferSize, BYTE* data, D
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_HEAP_TYPE_DEFAULT,
         dstFlags);
-    dstBuffer->SetName(L"Buffer Default Resource Heap");
 
     // copy the data from the upload heap to the default heap
     BYTE* pData;
@@ -558,6 +593,7 @@ ID3D12Resource* Raytracing::CreateBufferTransition(int bufferSize, BYTE* data, D
 void Raytracing::CreateInputBuffer() {
     int vBufferSize = sizeof(m_vertices);
     m_vertexBuffer = CreateBufferTransition(vBufferSize, reinterpret_cast<BYTE*>(m_vertices));
+    m_vertexBuffer->SetName(L"Vertex Buffer");
 
     m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
     m_vertexBufferView.StrideInBytes = sizeof(Vertex);
@@ -565,6 +601,7 @@ void Raytracing::CreateInputBuffer() {
 
     int iBufferSize = sizeof(m_indices);
     m_indexBuffer = CreateBufferTransition(iBufferSize, reinterpret_cast<BYTE*>(m_indices));
+    m_indexBuffer->SetName(L"Index Buffer");
 
     m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
@@ -572,17 +609,59 @@ void Raytracing::CreateInputBuffer() {
 }
 
 void Raytracing::CreateConstantBuffer() {
-    const UINT cBufferSize = sizeof(ConstantBuffer) * FrameCount;
+    const UINT cBufferSize = ROUND_UP(sizeof(ConstantBuffer), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
     m_constantBuffer = CreateBuffer(
         cBufferSize,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_FLAG_NONE);
-    m_constantBuffer.Get()->SetName(L"Buffer Upload Resource Heap");
+    m_constantBuffer.Get()->SetName(L"Constant Buffer Upload Resource Heap");
+}
 
-    D3D12_RANGE readRange = { 0, 0 };
-    m_constantBuffer.Get()->Map(0, &readRange, reinterpret_cast<void**>(&m_constantBufferLoc));
-    ZeroMemory(m_constantBufferLoc, cBufferSize);
+void Raytracing::CreateInstanceBuffer() {
+    uint32_t iBufferSize = ROUND_UP(
+        static_cast<uint32_t>(m_instances.size()) * sizeof(InstanceData),
+        D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+
+    m_instanceBuffer = CreateBuffer(
+        iBufferSize,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        D3D12_HEAP_TYPE_UPLOAD,
+        D3D12_RESOURCE_FLAG_NONE);
+    m_constantBuffer.Get()->SetName(L"Instance Buffer Upload Resource Heap");
+}
+
+void Raytracing::CreateCbvSrvHeap() {
+    const UINT cBufferSize = ROUND_UP(sizeof(ConstantBuffer), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+    D3D12_DESCRIPTOR_HEAP_DESC cbvSrvHeapDesc = {};
+    cbvSrvHeapDesc.NumDescriptors = 2;
+    cbvSrvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    cbvSrvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    m_device->CreateDescriptorHeap(&cbvSrvHeapDesc, IID_PPV_ARGS(&m_cbvSrvHeap));
+
+    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+    cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.SizeInBytes = cBufferSize;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE cbvHandle = m_cbvSrvHeap->GetCPUDescriptorHandleForHeapStart();
+    m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Buffer.FirstElement = 0;
+    srvDesc.Buffer.NumElements = static_cast<UINT>(m_instances.size());
+    srvDesc.Buffer.StructureByteStride = sizeof(InstanceData);
+    srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+    std::wstringstream ss;
+    ss << "Start" << "\n";
+    OutputDebugString(ss.str().c_str());
+
+    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_cbvSrvHeap->GetCPUDescriptorHandleForHeapStart();
+    srvHandle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->CreateShaderResourceView(m_instanceBuffer.Get(), &srvDesc, srvHandle);
 }
 
 void Raytracing::CreateDepthStencilBuffer() {

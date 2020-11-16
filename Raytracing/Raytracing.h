@@ -54,6 +54,10 @@ private:
 		XMMATRIX projection;
 	};
 
+	struct InstanceData {
+		XMMATRIX model;
+	};
+
 	ConstantBuffer m_cbData;
 	XMFLOAT2 m_mouse = { 0.f, 0.f };
 
@@ -98,8 +102,10 @@ private:
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
 	ComPtr<ID3D12DescriptorHeap> m_depthStencilHeap;
 
-	ComPtr<ID3D12Resource> m_constantBuffer;
-	UINT8* m_constantBufferLoc;
+	ComPtr<ID3D12Resource> m_constantBuffer; // CBV
+	ComPtr<ID3D12Resource> m_instanceBuffer; // SRV
+	ComPtr<ID3D12DescriptorHeap> m_cbvSrvHeap;
+
 
 	void Update();
 	void Render();
@@ -119,8 +125,10 @@ private:
 	void CreateCommandList();
 
 	void CreateInputBuffer();
-	void CreateConstantBuffer();
 	void CreateDepthStencilBuffer();
+	void CreateConstantBuffer();
+	void CreateInstanceBuffer();
+	void CreateCbvSrvHeap();
 	void InitViewport();
 
 	HRESULT CompileShader(LPCWSTR filename, LPCSTR target, D3D12_SHADER_BYTECODE* byteCode);
@@ -156,9 +164,10 @@ private:
 	};
 
 	enum GraphicsRootParameters : UINT32 {
-		GraphicsRootCBV = 0,
-		//GraphicsRootSRVTable,
-		GraphicsRootParametersCount
+		IdxCBV = 0,
+		IdxSRV,
+		IdxInstance,
+		ParametersCount
 	};
 
 	// #DXR

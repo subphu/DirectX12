@@ -592,16 +592,33 @@ ID3D12Resource* Raytracing::CreateBufferTransition(int bufferSize, BYTE* data, D
 
 void Raytracing::CreateInputBuffer() {
     int vBufferSize = sizeof(m_vertices);
-    m_vertexBuffer = CreateBufferTransition(vBufferSize, reinterpret_cast<BYTE*>(m_vertices));
+    m_vertexBuffer = CreateBuffer(
+        vBufferSize,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        D3D12_HEAP_TYPE_UPLOAD);
     m_vertexBuffer->SetName(L"Vertex Buffer");
+
+    D3D12_RANGE range = { 0, 0 };
+    UINT8* pVertexDataBegin;
+    m_vertexBuffer->Map(0, &range, reinterpret_cast<void**>(&pVertexDataBegin));
+    memcpy(pVertexDataBegin, m_vertices, vBufferSize);
+    m_vertexBuffer->Unmap(0, nullptr);
 
     m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
     m_vertexBufferView.StrideInBytes = sizeof(Vertex);
     m_vertexBufferView.SizeInBytes = vBufferSize;
 
     int iBufferSize = sizeof(m_indices);
-    m_indexBuffer = CreateBufferTransition(iBufferSize, reinterpret_cast<BYTE*>(m_indices));
+    m_indexBuffer = CreateBuffer(
+        iBufferSize,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        D3D12_HEAP_TYPE_UPLOAD);
     m_indexBuffer->SetName(L"Index Buffer");
+
+    UINT8* pIndexDataBegin;
+    m_indexBuffer->Map(0, &range, reinterpret_cast<void**>(&pIndexDataBegin));
+    memcpy(pIndexDataBegin, m_indices, iBufferSize);
+    m_indexBuffer->Unmap(0, nullptr);
 
     m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;

@@ -207,7 +207,7 @@ void Raytracing::Init() {
     OutputDebugString(ss.str().c_str());
 
 	IDXGIFactory4* dxgiFactory;
-	CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
+    CreateDXGIFactory2(GetDebugFlag(), IID_PPV_ARGS(&dxgiFactory));
 	CreateDevice(dxgiFactory);
 	CreateSwapChain(dxgiFactory);
 	CreateRTV();
@@ -237,6 +237,20 @@ void Raytracing::Init() {
 void Raytracing::Destroy() {
     WaitForPreviousFrame();
     CloseHandle(m_fenceEvent);
+}
+
+UINT Raytracing::GetDebugFlag() {
+    UINT dxgiFactoryFlags = 0;
+    // Enable the debug layer (requires the Graphics Tools "optional feature").
+    // NOTE: Enabling the debug layer after device creation will invalidate the active device.
+    ComPtr<ID3D12Debug> debugController;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+        debugController->EnableDebugLayer();
+
+        // Enable additional debug layers.
+        dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
+    }
+    return dxgiFactoryFlags;
 }
 
 void Raytracing::CheckRaytracingSupport() {

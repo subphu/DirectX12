@@ -108,6 +108,7 @@ private:
 	void WaitForPreviousFrame();
 	void ExecuteRenderCommand();
 	
+	UINT GetDebugFlag();
 	void CheckRaytracingSupport();
 	void CreateDevice(IDXGIFactory4* factory);
 	void CreateSwapChain(IDXGIFactory4* factory);

@@ -206,13 +206,13 @@ void Raytracing::MouseMove(UINT8 wParam, UINT32 lParam) {
     bool lmb = wParam & MK_LBUTTON;
     bool mmb = wParam & MK_MBUTTON;
     bool rmb = wParam & MK_RBUTTON;
-    if (!lmb) return;
-
     float x = float(GET_X_LPARAM(lParam));
     float y = float(GET_Y_LPARAM(lParam));
-
-    m_camera.Move(x - m_mouse.x, y - m_mouse.y);
+    XMFLOAT2 mouse = m_mouse;
     m_mouse = { x, y };
+    if (!lmb) return;
+
+    m_camera.Move(x - mouse.x, y - mouse.y);
 }
 
 void Raytracing::MouseWheel(float wParam) {

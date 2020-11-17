@@ -23,10 +23,13 @@ void Raytracing::Update() {
     XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(0));
     XMMATRIX translation = XMMatrixTranslation(0.0f, 0.0f, 0.0f);
     XMMATRIX scale = XMMatrixScaling(1.f, 1.f, 1.f);
+    m_instances[0].second = model * rotation * translation * scale;
 
-    m_cbData.model = model * rotation * translation * scale;
+    XMVECTOR det;
     m_cbData.view = m_camera.GetView();
     m_cbData.projection = m_camera.GetProjection();
+    m_cbData.viewI = XMMatrixInverse(&det, m_camera.GetView());
+    m_cbData.projectionI = XMMatrixInverse(&det, m_camera.GetProjection());
 
     // update constant data
     uint8_t* pData;
@@ -97,6 +100,8 @@ void Raytracing::UpdateRenderPipeline() {
 
         m_commandList->DrawIndexedInstanced(m_indicesCount, 1, 0, 0, 0);
     } else {
+        CreateTopLevelAS(m_instances, true);
+
         std::vector<ID3D12DescriptorHeap*> heaps = { m_srvUavHeap.Get() };
         m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
 
@@ -1265,33 +1270,40 @@ void Raytracing::CreateRaytracingOutputBuffer() {
 
 void Raytracing::CreateShaderResourceHeap() {
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.NumDescriptors = 2;
+    heapDesc.NumDescriptors = 3;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_srvUavHeap));
 
-    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_srvUavHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = m_srvUavHeap->GetCPUDescriptorHandleForHeapStart();
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-    m_device->CreateUnorderedAccessView(m_outputResource.Get(), nullptr, &uavDesc, srvHandle);
+    m_device->CreateUnorderedAccessView(m_outputResource.Get(), nullptr, &uavDesc, handle);
 
-    srvHandle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    handle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
     srvDesc.Format = DXGI_FORMAT_UNKNOWN;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.RaytracingAccelerationStructure.Location = m_topLevelASBuffers.pResult->GetGPUVirtualAddress();
-    m_device->CreateShaderResourceView(nullptr, &srvDesc, srvHandle);
+    m_device->CreateShaderResourceView(nullptr, &srvDesc, handle);
+
+    handle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+    cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
+    cbvDesc.SizeInBytes = sizeof(ConstantBuffer);
+    m_device->CreateConstantBufferView(&cbvDesc, handle);
 }
 
 void Raytracing::CreateShaderBindingTable() {
     // A SBT entry is made of a program ID and a set of parameters, taking 8 bytes each. 
     UINT m_progIdSize = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
     m_rayGenEntrySize   = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-    m_missEntrySize     = ROUND_UP(m_progIdSize + 8 * 0, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
-    m_hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+    m_missEntrySize     = ROUND_UP(m_progIdSize + 8 * 1 /*0*/, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
+    m_hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 2, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
     m_sbtSize           = ROUND_UP(m_rayGenEntrySize + m_missEntrySize + m_hitGroupEntrySize, 256);
 
     uint8_t* pData;
@@ -1306,9 +1318,12 @@ void Raytracing::CreateShaderBindingTable() {
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"Miss"), m_progIdSize);
     pData += m_missEntrySize;
 
-    auto vertexHeapPointer = { (void*)(m_vertexBuffer->GetGPUVirtualAddress()) };
+    std::vector<void*> vertexHeapPointer = {
+        (void*)(m_vertexBuffer->GetGPUVirtualAddress()),
+        (void*)(m_indexBuffer->GetGPUVirtualAddress())
+    };
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"HitGroup"), m_progIdSize);
-    memcpy(pData + m_progIdSize, &vertexHeapPointer, 8 * 1);
+    memcpy(pData + m_progIdSize, vertexHeapPointer.data(), 8 * vertexHeapPointer.size());
 
     m_sbtStorage->Unmap(0, nullptr);
 }

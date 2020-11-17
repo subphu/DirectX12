@@ -49,9 +49,10 @@ private:
 	};
 
 	struct ConstantBuffer {
-		XMMATRIX model;
 		XMMATRIX view;
 		XMMATRIX projection;
+		XMMATRIX viewI;
+		XMMATRIX projectionI;
 	};
 
 	struct InstanceData {
@@ -67,7 +68,7 @@ private:
 	std::wstring m_title;
 	float m_aspectRatio;
 
-	bool m_raster = true;
+	bool m_raster = false;
 
 	static const UINT FrameCount = 2;
 
@@ -223,5 +224,6 @@ private:
 	uint32_t m_missEntrySize;
 	uint32_t m_hitGroupEntrySize;
 	uint32_t m_sbtSize;
+
 };
 

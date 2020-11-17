@@ -919,18 +919,25 @@ ComPtr<ID3D12RootSignature> Raytracing::CreateRayGenSignature() {
     rangeUav.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
     rangeUav.OffsetInDescriptorsFromTableStart = 0;
 
-    D3D12_DESCRIPTOR_RANGE rangeSrv {};
+    D3D12_DESCRIPTOR_RANGE rangeSrv = {};
     rangeSrv.BaseShaderRegister = 0;
     rangeSrv.NumDescriptors = 1;
     rangeSrv.RegisterSpace = 0;
     rangeSrv.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     rangeSrv.OffsetInDescriptorsFromTableStart = 1;
 
-    std::vector<D3D12_DESCRIPTOR_RANGE> rangeStorage = { rangeUav, rangeSrv };
+    D3D12_DESCRIPTOR_RANGE rangeCbv = {};
+    rangeCbv.BaseShaderRegister = 0;
+    rangeCbv.NumDescriptors = 1;
+    rangeCbv.RegisterSpace = 0;
+    rangeCbv.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+    rangeCbv.OffsetInDescriptorsFromTableStart = 2;
+
+    std::vector<D3D12_DESCRIPTOR_RANGE> rangeStorage = { rangeUav, rangeSrv, rangeCbv };
 
     D3D12_ROOT_PARAMETER param = {};
     param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-    param.DescriptorTable.NumDescriptorRanges = 2;
+    param.DescriptorTable.NumDescriptorRanges = 3;
     param.DescriptorTable.pDescriptorRanges = rangeStorage.data();
 
     D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
@@ -963,15 +970,36 @@ ComPtr<ID3D12RootSignature> Raytracing::CreateMissSignature() {
 }
 
 ComPtr<ID3D12RootSignature> Raytracing::CreateHitSignature() {
-    D3D12_ROOT_PARAMETER param = {};
-    param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-    param.Descriptor.RegisterSpace = 0;
-    param.Descriptor.ShaderRegister = 1;
+    std::vector<D3D12_ROOT_PARAMETER> params = { {}, {}, {}, {} };
+    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    params[0].Descriptor.RegisterSpace = 0;
+    params[0].Descriptor.ShaderRegister = 0;
+    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+         
+    params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+    params[1].Descriptor.RegisterSpace = 0;
+    params[1].Descriptor.ShaderRegister = 1;
+    params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    param.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    params[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    params[2].Descriptor.RegisterSpace = 0;
+    params[2].Descriptor.ShaderRegister = 0;
+    params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_DESCRIPTOR_RANGE range = {};
+    range.BaseShaderRegister = 2;
+    range.NumDescriptors = 1;
+    range.RegisterSpace = 0;
+    range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    range.OffsetInDescriptorsFromTableStart = 1;
+
+    params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    params[3].DescriptorTable.NumDescriptorRanges = 1;
+    params[3].DescriptorTable.pDescriptorRanges = &range;
+
     D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-    rootDesc.NumParameters = 1;
-    rootDesc.pParameters = &param;
+    rootDesc.NumParameters = params.size();
+    rootDesc.pParameters = params.data();
     rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
 
     ID3DBlob* pSigBlob;
@@ -1232,6 +1260,7 @@ void Raytracing::CreateRaytracingOutputBuffer() {
         D3D12_RESOURCE_STATE_COPY_SOURCE,
         nullptr,
         IID_PPV_ARGS(&m_outputResource));
+    m_outputResource->SetName(L"Raytracing output buffer");
 }
 
 void Raytracing::CreateShaderResourceHeap() {

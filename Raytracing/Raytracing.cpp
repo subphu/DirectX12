@@ -120,7 +120,7 @@ void Raytracing::UpdateRenderPipeline() {
 
         desc.HitGroupTable.StartAddress = sbtAddress + m_rayGenEntrySize + m_missEntrySize;
         desc.HitGroupTable.SizeInBytes = m_hitGroupEntrySize;
-        desc.HitGroupTable.StrideInBytes = m_missEntrySize;
+        desc.HitGroupTable.StrideInBytes = m_hitGroupEntrySize;
 
         desc.Width = m_width;
         desc.Height = m_height;
@@ -149,7 +149,6 @@ void Raytracing::UpdateRenderPipeline() {
 
         m_commandList->CopyResource(m_renderTargets[m_frameIndex].Get(), m_outputResource.Get());
 
-
         D3D12_RESOURCE_BARRIER resourceBarrierToTarget = {};
         resourceBarrierToTarget.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         resourceBarrierToTarget.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -158,7 +157,6 @@ void Raytracing::UpdateRenderPipeline() {
         resourceBarrierToTarget.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
         resourceBarrierToTarget.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         m_commandList->ResourceBarrier(1, &resourceBarrierToTarget);
-
 
     }
     
@@ -246,14 +244,13 @@ void Raytracing::Init() {
 
     InitViewport();
 
-
     ExecuteRenderCommand();
     WaitForPreviousFrame();
 
-    //CreateRaytracingPipeline();
-    //CreateRaytracingOutputBuffer();
-    //CreateShaderResourceHeap();
-    //CreateShaderBindingTable();
+    CreateRaytracingPipeline();
+    CreateRaytracingOutputBuffer();
+    CreateShaderResourceHeap();
+    CreateShaderBindingTable();
 }
 
 void Raytracing::Destroy() {
@@ -362,7 +359,6 @@ void Raytracing::CreateFence() {
 }
 
 void Raytracing::CreateRootSignature() {
-
     D3D12_DESCRIPTOR_RANGE1 ranges[ParametersCount - 1];
     ranges[IdxCBV].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
     ranges[IdxCBV].NumDescriptors = 1;
@@ -626,7 +622,7 @@ void Raytracing::CreateInputBuffer() {
 }
 
 void Raytracing::CreateConstantBuffer() {
-    const UINT cBufferSize = ROUND_UP(sizeof(ConstantBuffer), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+    const UINT cBufferSize = sizeof(ConstantBuffer);
     m_constantBuffer = CreateBuffer(
         cBufferSize,
         D3D12_RESOURCE_STATE_GENERIC_READ,
@@ -645,11 +641,10 @@ void Raytracing::CreateInstanceBuffer() {
         D3D12_RESOURCE_STATE_GENERIC_READ,
         D3D12_HEAP_TYPE_UPLOAD,
         D3D12_RESOURCE_FLAG_NONE);
-    m_constantBuffer.Get()->SetName(L"Instance Buffer Upload Resource Heap");
+    m_instanceBuffer.Get()->SetName(L"Instance Buffer Upload Resource Heap");
 }
 
 void Raytracing::CreateCbvSrvHeap() {
-    const UINT cBufferSize = ROUND_UP(sizeof(ConstantBuffer), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
     D3D12_DESCRIPTOR_HEAP_DESC cbvSrvHeapDesc = {};
     cbvSrvHeapDesc.NumDescriptors = 2;
     cbvSrvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -658,10 +653,10 @@ void Raytracing::CreateCbvSrvHeap() {
 
     D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
     cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
-    cbvDesc.SizeInBytes = cBufferSize;
+    cbvDesc.SizeInBytes = sizeof(ConstantBuffer);
 
-    D3D12_CPU_DESCRIPTOR_HANDLE cbvHandle = m_cbvSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = m_cbvSrvHeap->GetCPUDescriptorHandleForHeapStart();
+    m_device->CreateConstantBufferView(&cbvDesc, handle);
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -676,9 +671,8 @@ void Raytracing::CreateCbvSrvHeap() {
     ss << "Start" << "\n";
     OutputDebugString(ss.str().c_str());
 
-    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = m_cbvSrvHeap->GetCPUDescriptorHandleForHeapStart();
-    srvHandle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    m_device->CreateShaderResourceView(m_instanceBuffer.Get(), &srvDesc, srvHandle);
+    handle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->CreateShaderResourceView(m_instanceBuffer.Get(), &srvDesc, handle);
 }
 
 void Raytracing::CreateDepthStencilBuffer() {
@@ -783,11 +777,13 @@ Raytracing::AccelerationStructureBuffers Raytracing::CreateBottomLevelAS(
         D3D12_RESOURCE_STATE_COMMON, 
         D3D12_HEAP_TYPE_DEFAULT, 
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    buffers.pScratch->SetName(L"Buffer Scratch");
     buffers.pResult = CreateBuffer(
         static_cast<int>(resultSize),
         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, 
         D3D12_HEAP_TYPE_DEFAULT,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    buffers.pResult->SetName(L"Buffer Result");
 
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc;
@@ -843,17 +839,20 @@ void Raytracing::CreateTopLevelAS(
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        m_topLevelASBuffers.pScratch->SetName(L"Top Level Buffer Scratch");
         m_topLevelASBuffers.pResult = CreateBuffer(
             static_cast<int>(resultSize),
             D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
             D3D12_HEAP_TYPE_DEFAULT,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        m_topLevelASBuffers.pResult->SetName(L"Top Level Buffer Scratch");
 
         m_topLevelASBuffers.pInstanceDesc = CreateBuffer(
             static_cast<int>(instanceDescSize),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             D3D12_HEAP_TYPE_UPLOAD,
             D3D12_RESOURCE_FLAG_NONE);
+        m_topLevelASBuffers.pInstanceDesc->SetName(L"Top Level Buffer Instance");
     }
 
     D3D12_RAYTRACING_INSTANCE_DESC* instanceDescs;

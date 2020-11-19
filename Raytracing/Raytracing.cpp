@@ -21,9 +21,9 @@ void Raytracing::Update() {
     XMMATRIX model = XMMatrixIdentity();
     XMVECTOR rotAxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX rotation = XMMatrixRotationAxis(rotAxis, XMConvertToRadians(0));
-    XMMATRIX translation = XMMatrixTranslation(0.0f, 0.0f, 0.0f);
-    XMMATRIX scale = XMMatrixScaling(1.f, 1.f, 1.f);
-    m_instances[0].second = model * rotation * translation * scale;
+    XMMATRIX translation = XMMatrixTranslation(0.0f, -1.f, 0.0f);
+    XMMATRIX scale = XMMatrixScaling(4.f, 4.f, 4.f);
+    m_instances[1].second = scale * translation * rotation * model;
 
     XMVECTOR det;
     m_cbData.view = m_camera.GetView();
@@ -85,6 +85,7 @@ void Raytracing::UpdateRenderPipeline() {
         const float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
         m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         std::vector<ID3D12DescriptorHeap*> heaps = { m_cbvSrvHeap.Get() };
         m_commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
@@ -94,11 +95,14 @@ void Raytracing::UpdateRenderPipeline() {
         m_commandList->SetGraphicsRootDescriptorTable(1, handle); // SRV
         m_commandList->SetGraphicsRoot32BitConstant(2, 0, 0);
 
-        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
         m_commandList->IASetIndexBuffer(&m_indexBufferView);
-
         m_commandList->DrawIndexedInstanced(m_indicesCount, 1, 0, 0, 0);
+
+        m_commandList->SetGraphicsRoot32BitConstant(2, 1, 0);
+
+        m_commandList->IASetVertexBuffers(0, 1, &m_planeBufferView);
+        m_commandList->DrawInstanced(m_planeVertCount, 1, 0, 0);
     } else {
         CreateTopLevelAS(m_instances, true);
 
@@ -117,14 +121,14 @@ void Raytracing::UpdateRenderPipeline() {
         D3D12_GPU_VIRTUAL_ADDRESS sbtAddress = m_sbtStorage->GetGPUVirtualAddress();
         D3D12_DISPATCH_RAYS_DESC desc = {};
         desc.RayGenerationShaderRecord.StartAddress = sbtAddress;
-        desc.RayGenerationShaderRecord.SizeInBytes = m_rayGenEntrySize;
+        desc.RayGenerationShaderRecord.SizeInBytes = m_rayGenSectionSize;
 
-        desc.MissShaderTable.StartAddress = sbtAddress + m_rayGenEntrySize;
-        desc.MissShaderTable.SizeInBytes = m_missEntrySize;
+        desc.MissShaderTable.StartAddress = sbtAddress + m_rayGenSectionSize;
+        desc.MissShaderTable.SizeInBytes = m_missSectionSize;
         desc.MissShaderTable.StrideInBytes = m_missEntrySize;
 
-        desc.HitGroupTable.StartAddress = sbtAddress + m_rayGenEntrySize + m_missEntrySize;
-        desc.HitGroupTable.SizeInBytes = m_hitGroupEntrySize;
+        desc.HitGroupTable.StartAddress = sbtAddress + m_rayGenSectionSize + m_missSectionSize;
+        desc.HitGroupTable.SizeInBytes = m_hitGroupSectionSize;
         desc.HitGroupTable.StrideInBytes = m_hitGroupEntrySize;
 
         desc.Width = m_width;
@@ -624,6 +628,24 @@ void Raytracing::CreateInputBuffer() {
     m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     m_indexBufferView.SizeInBytes = iBufferSize;
+
+    // Plane
+    int pBufferSize = sizeof(m_planeVertices);
+    m_planeBuffer = CreateBuffer(
+        pBufferSize,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        D3D12_HEAP_TYPE_UPLOAD);
+    m_planeBuffer->SetName(L"Plane Vertex Buffer");
+
+    UINT8* pPlaneDataBegin;
+    m_planeBuffer->Map(0, &range, reinterpret_cast<void**>(&pPlaneDataBegin));
+    memcpy(pPlaneDataBegin, m_planeVertices, pBufferSize);
+    m_planeBuffer->Unmap(0, nullptr);
+
+    m_planeBufferView.BufferLocation = m_planeBuffer->GetGPUVirtualAddress();
+    m_planeBufferView.StrideInBytes = sizeof(Vertex);
+    m_planeBufferView.SizeInBytes = pBufferSize;
+
 }
 
 void Raytracing::CreateConstantBuffer() {
@@ -671,10 +693,6 @@ void Raytracing::CreateCbvSrvHeap() {
     srvDesc.Buffer.NumElements = static_cast<UINT>(m_instances.size());
     srvDesc.Buffer.StructureByteStride = sizeof(InstanceData);
     srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-    std::wstringstream ss;
-    ss << "Start" << "\n";
-    OutputDebugString(ss.str().c_str());
 
     handle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_device->CreateShaderResourceView(m_instanceBuffer.Get(), &srvDesc, handle);
@@ -907,8 +925,13 @@ void Raytracing::CreateAccelerationStructures() {
     AccelerationStructureBuffers bottomLevelBuffers = CreateBottomLevelAS(
         m_vertexBuffer, m_verticesCount, m_indexBuffer, m_indicesCount);
 
-    // Just one instance for now
-    m_instances = { {bottomLevelBuffers.pResult, XMMatrixIdentity()} };
+    AccelerationStructureBuffers planeBottomLevelBuffers =
+        CreateBottomLevelAS(m_planeBuffer, m_planeVertCount);
+
+    m_instances = { 
+        { bottomLevelBuffers.pResult, XMMatrixIdentity() },
+        { planeBottomLevelBuffers.pResult, XMMatrixIdentity() },
+    };
     CreateTopLevelAS(m_instances);
 
     // Store the AS buffers. The rest of the buffers will be released once we exit the function

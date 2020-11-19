@@ -164,6 +164,16 @@ private:
 		{ { +0.5f, -0.5f, +0.5f}, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	};
 
+	UINT m_planeVertCount = 6;
+	Vertex m_planeVertices[6] = {
+		{{-0.5f, -0.0f,  0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}}, // 0
+		{{ 0.5f, -0.0f,  0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}}, // 2
+		{{-0.5f, -0.0f, -0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}}, // 1
+		{{ 0.5f, -0.0f,  0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}}, // 2
+		{{ 0.5f, -0.0f, -0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}},  // 4
+		{{-0.5f, -0.0f, -0.5f}, {1.0f, 1.0f, 1.0f, 1.0f}}, // 1
+	};
+
 	enum GraphicsRootParameters : UINT32 {
 		IdxCBV = 0,
 		IdxSRV,
@@ -223,7 +233,12 @@ private:
 	uint32_t m_rayGenEntrySize;
 	uint32_t m_missEntrySize;
 	uint32_t m_hitGroupEntrySize;
+	uint32_t m_rayGenSectionSize;
+	uint32_t m_missSectionSize;
+	uint32_t m_hitGroupSectionSize;
 	uint32_t m_sbtSize;
 
+	ComPtr<ID3D12Resource> m_planeBuffer;
+	D3D12_VERTEX_BUFFER_VIEW m_planeBufferView;
 };
 

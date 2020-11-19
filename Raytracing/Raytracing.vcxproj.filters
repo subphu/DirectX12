@@ -57,5 +57,8 @@
     <None Include="Common.hlsl">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="ShadowRay.hlsl">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

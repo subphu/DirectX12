@@ -1099,11 +1099,11 @@ IDxcBlob* Raytracing::CompileShaderLibrary(LPCWSTR fileName) {
 
 void Raytracing::CreateRaytracingPipeline() {
     UINT64 subobjectCount =
-        3 +     // DXIL libraries
-        1 +     // Hit group declarations
+        4 +     // DXIL libraries
+        3 +     // Hit group declarations
         1 +     // Shader configuration
         1 +     // Shader payload
-        2 * 3 + // Root signature declaration + association
+        2 * 6 + // Root signature declaration + association
         2 +     // Empty global and local root signatures
         1;      // Final pipeline subobject
 
@@ -1111,10 +1111,14 @@ void Raytracing::CreateRaytracingPipeline() {
 
     UINT currentIndex = 0;
 
+    
+    // Libraries --------------------
 
     m_rayGenLibrary = CompileShaderLibrary(L"RayGen.hlsl");
     m_missLibrary = CompileShaderLibrary(L"Miss.hlsl");
     m_hitLibrary = CompileShaderLibrary(L"Hit.hlsl");
+    m_shadowLibrary = CompileShaderLibrary(L"ShadowRay.hlsl");
+
 
     D3D12_EXPORT_DESC rayGenExportDesc = {};
     rayGenExportDesc.Name = L"RayGen";
@@ -1136,22 +1140,44 @@ void Raytracing::CreateRaytracingPipeline() {
     D3D12_DXIL_LIBRARY_DESC missLibDesc = { {m_missLibrary->GetBufferPointer(), m_missLibrary->GetBufferSize()}, 1, &missExportDesc };
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &missLibDesc };
 
-    D3D12_EXPORT_DESC hitExportDesc = { L"ClosestHit" , nullptr, D3D12_EXPORT_FLAG_NONE };
-    D3D12_DXIL_LIBRARY_DESC hitLibDesc = { {m_hitLibrary->GetBufferPointer(), m_hitLibrary->GetBufferSize()}, 1, &hitExportDesc };
+    std::vector<D3D12_EXPORT_DESC> hitExportDesc = {
+        { L"ClosestHit" , nullptr, D3D12_EXPORT_FLAG_NONE },
+        { L"PlaneClosestHit" , nullptr, D3D12_EXPORT_FLAG_NONE } };
+    D3D12_DXIL_LIBRARY_DESC hitLibDesc = {
+        {m_hitLibrary->GetBufferPointer(), m_hitLibrary->GetBufferSize()},
+        2, hitExportDesc.data() };
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &hitLibDesc };
 
+    std::vector<D3D12_EXPORT_DESC> shadowExportDesc = {
+        { L"ShadowClosestHit" , nullptr, D3D12_EXPORT_FLAG_NONE },
+        { L"ShadowMiss" , nullptr, D3D12_EXPORT_FLAG_NONE } };
+    D3D12_DXIL_LIBRARY_DESC shadowLibDesc = {
+        {m_shadowLibrary->GetBufferPointer(), m_shadowLibrary->GetBufferSize()},
+        2, shadowExportDesc.data() };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, &shadowLibDesc };
 
-    D3D12_HIT_GROUP_DESC desc = {};
-    desc.HitGroupExport = L"HitGroup";
-    desc.ClosestHitShaderImport = L"ClosestHit";
-    desc.AnyHitShaderImport = nullptr;
-    desc.IntersectionShaderImport = nullptr;
+    // Hit groups --------------------
+
+    D3D12_HIT_GROUP_DESC hitGroupDesc = {};
+    hitGroupDesc.HitGroupExport = L"HitGroup";
+    hitGroupDesc.AnyHitShaderImport = nullptr;
+    hitGroupDesc.ClosestHitShaderImport = L"ClosestHit";
+    hitGroupDesc.IntersectionShaderImport = nullptr;
 
     D3D12_STATE_SUBOBJECT hitGroup = {};
     hitGroup.Type = D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP;
-    hitGroup.pDesc = &desc;
+    hitGroup.pDesc = &hitGroupDesc;
     subobjects[currentIndex++] = hitGroup;
 
+    D3D12_HIT_GROUP_DESC planeHitGroupDesc =
+    { L"PlaneHitGroup", D3D12_HIT_GROUP_TYPE_TRIANGLES, nullptr, L"PlaneClosestHit" , nullptr };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP, &planeHitGroupDesc };
+
+    D3D12_HIT_GROUP_DESC shadowHitGroupDesc =
+    { L"ShadowHitGroup", D3D12_HIT_GROUP_TYPE_TRIANGLES, nullptr, L"ShadowClosestHit" , nullptr };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP, &shadowHitGroupDesc };
+
+    // Shader config --------------------
 
     D3D12_RAYTRACING_SHADER_CONFIG shaderDesc = {};
     shaderDesc.MaxPayloadSizeInBytes = 4 * sizeof(float);
@@ -1162,44 +1188,44 @@ void Raytracing::CreateRaytracingPipeline() {
     shaderConfigObject.pDesc = &shaderDesc;
     subobjects[currentIndex++] = shaderConfigObject;
 
+    // Payload association --------------------
 
-    std::vector<std::wstring> exportedSymbols = { L"RayGen", L"Miss", L"HitGroup"}; // ClosestHit removed
+    std::vector<std::wstring> exportedSymbols = { L"RayGen", L"Miss", L"ShadowMiss", L"HitGroup", L"PlaneHitGroup", L"ShadowHitGroup" };
     std::vector<LPCWSTR> exportedSymbolPointers = {};
 
-    // Build an array of the string pointers
     exportedSymbolPointers.reserve(exportedSymbols.size());
     for (const auto& name : exportedSymbols) {
         exportedSymbolPointers.push_back(name.c_str());
     }
 
-    // Add a subobject for the association between shaders and the payload
     D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION shaderPayloadAssociation = {};
     shaderPayloadAssociation.NumExports = static_cast<UINT>(exportedSymbols.size());
     shaderPayloadAssociation.pExports = exportedSymbolPointers.data();
-
-    // Associate the set of shaders with the payload defined in the previous subobject
     shaderPayloadAssociation.pSubobjectToAssociate = &subobjects[(currentIndex - 1)];
 
-    // Create and store the payload association object
     D3D12_STATE_SUBOBJECT shaderPayloadAssociationObject = {};
     shaderPayloadAssociationObject.Type = D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION;
     shaderPayloadAssociationObject.pDesc = &shaderPayloadAssociation;
     subobjects[currentIndex++] = shaderPayloadAssociationObject;
 
+    // Root Signature --------------------
+
     m_rayGenSignature = CreateRayGenSignature();
     m_missSignature   = CreateMissSignature();
     m_hitSignature    = CreateHitSignature();
+    m_shadowSignature = CreateHitSignature();
 
     ID3D12RootSignature* rayGenSignature = m_rayGenSignature.Get();
-    ID3D12RootSignature* missSignature = m_missSignature.Get();
-    ID3D12RootSignature* hitSignature = m_hitSignature.Get();
+    ID3D12RootSignature* missSignature   = m_missSignature.Get();
+    ID3D12RootSignature* hitSignature    = m_hitSignature.Get();
+    ID3D12RootSignature* shadowSignature = m_shadowSignature.Get();
 
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &rayGenSignature };
     LPCWSTR rayGenSymbolPointers = L"RayGen" ;
     D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION rayGenAssociation = {};
+    rayGenAssociation.pSubobjectToAssociate = &subobjects[currentIndex - 1];
     rayGenAssociation.NumExports = 1;
     rayGenAssociation.pExports = &rayGenSymbolPointers;
-    rayGenAssociation.pSubobjectToAssociate = &subobjects[currentIndex - 1];
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &rayGenAssociation };
 
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &missSignature };
@@ -1208,10 +1234,28 @@ void Raytracing::CreateRaytracingPipeline() {
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &missAssociation };
 
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &hitSignature };
-    LPCWSTR hitSymbolPointers = L"ClosestHit";
+    LPCWSTR hitSymbolPointers = L"HitGroup";
     D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION hitAssociation = { &subobjects[currentIndex - 1], 1, &hitSymbolPointers };
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &hitAssociation };
 
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &shadowSignature };
+    LPCWSTR shadowSymbolPointers = L"ShadowHitGroup";
+    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION shadowAssociation = { &subobjects[currentIndex - 1], 1, &shadowSymbolPointers };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &shadowAssociation };
+
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &missSignature };
+    std::vector<LPCWSTR> missShadowSymbolPointers = { L"Miss", L"ShadowMiss" };
+    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION missShadowAssociation = { &subobjects[currentIndex - 1], 2, missShadowSymbolPointers.data() };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &missShadowAssociation };
+
+
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &hitSignature };
+    std::vector<LPCWSTR> hitPlaneSymbolPointers = { L"HitGroup", L"PlaneHitGroup"};
+    D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION planeHitAssociation = { &subobjects[currentIndex - 1], 2, hitPlaneSymbolPointers.data() };
+    subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_SUBOBJECT_TO_EXPORTS_ASSOCIATION, &planeHitAssociation };
+
+
+    // Root signature --------------------
 
     ID3DBlob* serializedRootSignature;
     ID3DBlob* error;
@@ -1240,9 +1284,10 @@ void Raytracing::CreateRaytracingPipeline() {
 
     subobjects[currentIndex++] = { D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE, &localRootSignature };
 
-    // Add a subobject for the ray tracing pipeline configuration
+    // Pipeline config --------------------
+
     D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig = {};
-    pipelineConfig.MaxTraceRecursionDepth = 1;
+    pipelineConfig.MaxTraceRecursionDepth = 2;
 
     D3D12_STATE_SUBOBJECT pipelineConfigObject = {};
     pipelineConfigObject.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG;
@@ -1250,12 +1295,12 @@ void Raytracing::CreateRaytracingPipeline() {
 
     subobjects[currentIndex++] = pipelineConfigObject;
 
-    // Describe the ray tracing pipeline state object
+    // Create state object --------------------
+
     D3D12_STATE_OBJECT_DESC pipelineDesc = {};
     pipelineDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
     pipelineDesc.NumSubobjects = currentIndex;
     pipelineDesc.pSubobjects = subobjects.data();
-
 
     HRESULT hr = m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&m_rtStateObject));
     if (FAILED(hr)) { throw std::logic_error("Could not create the raytracing state object"); }
@@ -1327,7 +1372,11 @@ void Raytracing::CreateShaderBindingTable() {
     m_rayGenEntrySize   = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
     m_missEntrySize     = ROUND_UP(m_progIdSize + 8 * 1 /*0*/, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
     m_hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 2, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-    m_sbtSize           = ROUND_UP(m_rayGenEntrySize + m_missEntrySize + m_hitGroupEntrySize, 256);
+
+    m_rayGenSectionSize = m_rayGenEntrySize;
+    m_missSectionSize = m_missEntrySize * 2;
+    m_hitGroupSectionSize = m_hitGroupEntrySize * 3;
+    m_sbtSize = ROUND_UP(m_rayGenSectionSize + m_missSectionSize + m_hitGroupSectionSize, 256);
 
     uint8_t* pData;
     m_sbtStorage = CreateBuffer(m_sbtSize, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_HEAP_TYPE_UPLOAD);
@@ -1341,12 +1390,23 @@ void Raytracing::CreateShaderBindingTable() {
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"Miss"), m_progIdSize);
     pData += m_missEntrySize;
 
+    memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"ShadowMiss"), m_progIdSize);
+    pData += m_missEntrySize;
+
     std::vector<void*> vertexHeapPointer = {
         (void*)(m_vertexBuffer->GetGPUVirtualAddress()),
         (void*)(m_indexBuffer->GetGPUVirtualAddress())
     };
     memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"HitGroup"), m_progIdSize);
     memcpy(pData + m_progIdSize, vertexHeapPointer.data(), 8 * vertexHeapPointer.size());
+    pData += m_hitGroupEntrySize;
+
+    memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"ShadowHitGroup"), m_progIdSize);
+    pData += m_hitGroupEntrySize;
+
+    memcpy(pData, m_rtStateObjectProps->GetShaderIdentifier(L"PlaneHitGroup"), m_progIdSize);
+    memcpy(pData + m_progIdSize, &heapPointer, 8 * 1);
+
 
     m_sbtStorage->Unmap(0, nullptr);
 }

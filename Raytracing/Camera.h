@@ -27,14 +27,14 @@ private:
 	float m_pitch = 0.f;
 	float m_roll = 0.f;
 
-	XMVECTOR m_up;
-	XMVECTOR m_front;
-	XMVECTOR m_right;
+	XMVECTOR m_up = {};
+	XMVECTOR m_front = {};
+	XMVECTOR m_right = {};
 			 
-	XMMATRIX m_view;
-	XMMATRIX m_projection;
+	XMMATRIX m_view = {};
+	XMMATRIX m_projection = {};
 			 
-	XMVECTOR m_position;
-	XMVECTOR m_target;
+	XMVECTOR m_position = {};
+	XMVECTOR m_target = {};
 };
 

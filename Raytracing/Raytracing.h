@@ -4,6 +4,7 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <dxcapi.h>
+#include <dxgidebug.h>
 #include <D3Dcompiler.h>
 #include <DirectXMath.h>
 
@@ -59,14 +60,14 @@ private:
 		XMMATRIX model;
 	};
 
-	ConstantBuffer m_cbData;
+	ConstantBuffer m_cbData = {};
 	XMFLOAT2 m_mouse = { 0.f, 0.f };
 
-	HWND m_hwnd;
-	UINT m_width;
-	UINT m_height;
-	std::wstring m_title;
-	float m_aspectRatio;
+	HWND m_hwnd = 0;
+	UINT m_width = 900;
+	UINT m_height = 900;
+	std::wstring m_title = L"";
+	float m_aspectRatio = 1.0f;
 
 	bool m_raster = false;
 
@@ -74,9 +75,9 @@ private:
 
 	Camera m_camera;
 
-	UINT m_frameIndex;
-	D3D12_VIEWPORT m_viewport;
-	D3D12_RECT m_scissorRect;
+	UINT m_frameIndex = 0;
+	D3D12_VIEWPORT m_viewport = {};
+	D3D12_RECT m_scissorRect = {};
 
 	ComPtr<ID3D12Device5> m_device;
 	ComPtr<IDXGISwapChain3> m_swapChain;
@@ -85,13 +86,13 @@ private:
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator;
 	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
 
-	UINT m_rtvDescriptorSize;
+	UINT m_rtvDescriptorSize = 0;
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
 
 	ComPtr<ID3D12Fence> m_fence;
-	UINT64 m_fenceValue;
-	HANDLE m_fenceEvent;
+	UINT64 m_fenceValue = 0;
+	HANDLE m_fenceEvent = 0;
 
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 	ComPtr<ID3D12PipelineState> m_pipelineState;
@@ -99,8 +100,8 @@ private:
 	ComPtr<ID3D12Resource> m_vertexBuffer;
 	ComPtr<ID3D12Resource> m_indexBuffer;
 	ComPtr<ID3D12Resource> m_depthStencilBuffer;
-	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-	D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
+	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView = {};
+	D3D12_INDEX_BUFFER_VIEW m_indexBufferView = {};
 	ComPtr<ID3D12DescriptorHeap> m_depthStencilHeap;
 
 	ComPtr<ID3D12Resource> m_constantBuffer; // CBV
@@ -230,13 +231,13 @@ private:
 	void CreateShaderBindingTable();
 	ComPtr<ID3D12Resource> m_sbtStorage;
 
-	uint32_t m_rayGenEntrySize;
-	uint32_t m_missEntrySize;
-	uint32_t m_hitGroupEntrySize;
-	uint32_t m_rayGenSectionSize;
-	uint32_t m_missSectionSize;
-	uint32_t m_hitGroupSectionSize;
-	uint32_t m_sbtSize;
+	uint32_t m_rayGenEntrySize = 0;
+	uint32_t m_missEntrySize = 0;
+	uint32_t m_hitGroupEntrySize = 0;
+	uint32_t m_rayGenSectionSize = 0;
+	uint32_t m_missSectionSize = 0;
+	uint32_t m_hitGroupSectionSize = 0;
+	uint32_t m_sbtSize = 0;
 
 	ComPtr<ID3D12Resource> m_planeBuffer;
 	D3D12_VERTEX_BUFFER_VIEW m_planeBufferView;

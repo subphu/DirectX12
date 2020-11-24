@@ -569,41 +569,6 @@ ID3D12Resource* Raytracing::CreateBuffer(int bufferSize, D3D12_RESOURCE_STATES r
     return pBuffer;
 }
 
-ID3D12Resource* Raytracing::CreateBufferTransition(int bufferSize, BYTE* data, D3D12_RESOURCE_FLAGS dstFlags, D3D12_RESOURCE_STATES dstStates) {
-    // create upload universal buffer
-    ID3D12Resource* srcBuffer = CreateBuffer(
-        bufferSize,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        D3D12_HEAP_TYPE_UPLOAD);
-    srcBuffer->SetName(L"Buffer Upload Resource Heap");
-
-    // create default GPU buffer
-    ID3D12Resource* dstBuffer = CreateBuffer(
-        bufferSize,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_HEAP_TYPE_DEFAULT,
-        dstFlags);
-
-    // copy the data from the upload heap to the default heap
-    BYTE* pData;
-    srcBuffer->Map(0, NULL, reinterpret_cast<void**>(&pData));
-    memcpy(pData, data, bufferSize);
-    srcBuffer->Unmap(0, NULL);
-
-    m_commandList->CopyBufferRegion(dstBuffer, 0, srcBuffer, 0, bufferSize);
-
-    D3D12_RESOURCE_BARRIER resourceBarrier = {};
-    resourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    resourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    resourceBarrier.Transition.pResource = dstBuffer;
-    resourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    resourceBarrier.Transition.StateAfter = dstStates;
-    resourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-    m_commandList->ResourceBarrier(1, &resourceBarrier);
-    return dstBuffer;
-}
-
 void Raytracing::CreateInputBuffer() {
     int vBufferSize = sizeof(m_vertices);
     m_vertexBuffer = CreateBuffer(

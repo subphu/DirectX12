@@ -1,6 +1,4 @@
-
 struct ShadowHitInfo { bool isHit; };
-
 struct Attributes { float2 uv; };
 
 [shader("closesthit")] 

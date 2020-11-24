@@ -561,9 +561,6 @@
     <ClCompile Include="Raytracing.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Common.hlsl">
-      <FileType>Document</FileType>
-    </None>
     <None Include="Hit.hlsl">
       <FileType>Document</FileType>
     </None>

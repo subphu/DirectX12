@@ -17,10 +17,6 @@ Camera::Camera(XMVECTOR position, float ratio) {
 }
 
 Camera::~Camera() {}
-#include <string>    
-#include <iostream>
-#include <sstream>   
-#include <vector>
 
 void Camera::Move(float x, float y) {
     float distance = 0.0f;

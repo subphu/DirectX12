@@ -280,7 +280,7 @@ UINT Raytracing::GetDebugFlag() {
 
     ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
     if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(dxgiInfoQueue.GetAddressOf())))) {
-        m_dxgiFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
+        dxgiFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
 
         dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_WARNING, true);
         dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
@@ -1344,7 +1344,7 @@ void Raytracing::CreateShaderBindingTable() {
     // A SBT entry is made of a program ID and a set of parameters, taking 8 bytes each. 
     UINT m_progIdSize = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
     m_rayGenEntrySize   = ROUND_UP(m_progIdSize + 8 * 1, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-    m_missEntrySize     = ROUND_UP(m_progIdSize + 8 * 1 /*0*/, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
+    m_missEntrySize     = ROUND_UP(m_progIdSize + 8 * 0, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT); // no param
     m_hitGroupEntrySize = ROUND_UP(m_progIdSize + 8 * 2, D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
     m_rayGenSectionSize = m_rayGenEntrySize;

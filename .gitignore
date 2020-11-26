@@ -1,5 +1,6 @@
-debug/
 .vs/
+*.tlog
+*.log
 
 # Prerequisites
 *.d
@@ -17,7 +18,6 @@ debug/
 # Compiled Dynamic libraries
 *.so
 *.dylib
-*.dll
 
 # Fortran module files
 *.mod

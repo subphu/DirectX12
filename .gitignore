@@ -1,6 +1,9 @@
 .vs/
 *.tlog
 *.log
+*.iobj
+*.ipdb
+*.pdb
 
 # Prerequisites
 *.d
